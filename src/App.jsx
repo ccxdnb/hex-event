@@ -285,6 +285,58 @@ input[type="checkbox"] { width: 14px; height: 14px; accent-color: #a78bfa; curso
 .day-cell.ev.on { background: linear-gradient(160deg,#e879c0,#a78bfa); }
 
 @media(max-width:580px){ .grid2,.grid3{ grid-template-columns:1fr; } .span2{ grid-column:1; } }
+
+/* ── Admin modal ── */
+.admin-overlay { position:fixed; inset:0; z-index:500; background:rgba(30,21,53,0.45); backdrop-filter:blur(6px); display:flex; align-items:center; justify-content:center; }
+.admin-modal { background:rgba(248,245,255,0.98); border:1px solid rgba(200,180,240,0.4); border-radius:16px; padding:28px 24px; width:300px; max-width:90vw; box-shadow:0 24px 60px rgba(30,21,53,0.18); }
+.admin-modal h3 { font-family:'Bebas Neue',sans-serif; font-size:26px; letter-spacing:0.06em; color:#1e1535; margin-bottom:4px; }
+.admin-modal p { font-family:'IBM Plex Mono',monospace; font-size:9px; color:#a89ec0; letter-spacing:0.1em; margin-bottom:18px; }
+.admin-modal input[type="password"] { width:100%; margin-bottom:10px; font-size:14px; letter-spacing:0.2em; }
+.admin-submit { width:100%; padding:10px; border-radius:8px; cursor:pointer; font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.15em; text-transform:uppercase; background:linear-gradient(90deg,rgba(232,121,192,0.12),rgba(167,139,250,0.12)); border:1px solid rgba(167,139,250,0.3); color:#8b72e8; transition:background 0.2s; }
+.admin-submit:hover { background:linear-gradient(90deg,rgba(232,121,192,0.22),rgba(167,139,250,0.22)); }
+.admin-error-msg { font-family:'IBM Plex Mono',monospace; font-size:9px; color:#e05585; margin-top:8px; letter-spacing:0.06em; text-align:center; }
+.admin-cancel { width:100%; padding:7px; border-radius:8px; cursor:pointer; font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.1em; text-transform:uppercase; background:none; border:none; color:#a89ec0; margin-top:6px; }
+.admin-cancel:hover { color:#8b72e8; }
+
+/* ── Lock / admin badge ── */
+.lock-btn { display:inline-flex; align-items:center; gap:5px; font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.1em; padding:4px 10px; border-radius:20px; border:1px solid; cursor:pointer; transition:all 0.2s; margin-top:10px; background:none; }
+.lock-btn.locked   { color:#c0446e; border-color:rgba(224,85,133,0.25); background:rgba(224,85,133,0.06); }
+.lock-btn.unlocked { color:#2a9068; border-color:rgba(52,168,122,0.25);  background:rgba(52,168,122,0.08); }
+.lock-btn:hover { filter:brightness(1.1); }
+
+/* ── Sidebar dashboard button ── */
+.sidebar-footer { padding:8px; border-top:1px solid rgba(200,180,240,0.18); flex-shrink:0; }
+.sidebar-dash-btn { width:100%; padding:9px 10px; border-radius:9px; background:none; border:1px solid transparent; cursor:pointer; font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.14em; color:#a89ec0; text-align:left; display:flex; align-items:center; gap:8px; transition:all 0.15s; text-transform:uppercase; }
+.sidebar-dash-btn:hover  { background:rgba(167,139,250,0.07); color:#8b72e8; }
+.sidebar-dash-btn.active { background:rgba(167,139,250,0.11); border-color:rgba(167,139,250,0.18); color:#8b72e8; }
+
+/* ── Dashboard ── */
+.dash-kpi-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:10px; margin-bottom:24px; }
+.dash-kpi { background:rgba(255,255,255,0.65); backdrop-filter:blur(12px); border:1px solid rgba(200,180,240,0.35); border-radius:12px; padding:14px 16px; }
+.dash-kpi-label { font-family:'IBM Plex Mono',monospace; font-size:9px; color:#a89ec0; letter-spacing:0.08em; text-transform:uppercase; margin-bottom:6px; }
+.dash-kpi-value { font-family:'IBM Plex Mono',monospace; font-size:18px; font-weight:600; color:#1e1535; }
+.dash-kpi-value.pos { color:#34a87a; }
+.dash-kpi-value.neg { color:#e05585; }
+.dash-kpi-value.grad { background:linear-gradient(90deg,#e879c0,#a78bfa); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+
+.dash-event-row { background:rgba(255,255,255,0.65); backdrop-filter:blur(12px); border:1px solid rgba(200,180,240,0.35); border-radius:12px; padding:14px 16px; margin-bottom:8px; display:flex; align-items:center; gap:16px; flex-wrap:wrap; cursor:pointer; transition:border-color 0.2s; }
+.dash-event-row:hover { border-color:rgba(167,139,250,0.35); }
+.dash-event-identity { flex:1; min-width:120px; }
+.dash-event-name { font-family:'Bebas Neue',sans-serif; font-size:20px; letter-spacing:0.05em; color:#1e1535; line-height:1.1; }
+.dash-event-date-lbl { font-family:'IBM Plex Mono',monospace; font-size:9px; color:#b8aed4; margin-top:2px; }
+.dash-ev-metric { text-align:right; min-width:80px; }
+.dash-ev-metric-lbl { font-family:'IBM Plex Mono',monospace; font-size:8px; color:#a89ec0; letter-spacing:0.06em; text-transform:uppercase; margin-bottom:3px; }
+.dash-ev-metric-val { font-family:'IBM Plex Mono',monospace; font-size:12px; font-weight:600; color:#1e1535; }
+.dash-ev-metric-val.pos { color:#34a87a; }
+.dash-ev-metric-val.neg { color:#e05585; }
+
+.dash-bar-row { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+.dash-bar-label { font-family:'IBM Plex Mono',monospace; font-size:10px; color:#6b5e88; width:150px; flex-shrink:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.dash-bar-track { flex:1; height:8px; background:rgba(200,180,240,0.15); border-radius:4px; overflow:hidden; }
+.dash-bar-fill { height:100%; border-radius:4px; transition:width 0.6s ease; }
+.dash-bar-val { font-family:'IBM Plex Mono',monospace; font-size:10px; color:#a89ec0; width:90px; text-align:right; flex-shrink:0; }
+
+.ro-wrap { border:none; padding:0; margin:0; min-width:0; display:contents; }
 `
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -354,9 +406,50 @@ const formatDate = (d) => {
   return `${parts[2]} ${months[parseInt(parts[1]) - 1]} ${parts[0]}`
 }
 
+// ─── Admin ────────────────────────────────────────────────────────────────────
+
+const ADMIN_PASS = import.meta.env.VITE_ADMIN_PASSWORD || 'OMEN2025'
+
+// ─── Cross-event financial summary ───────────────────────────────────────────
+
+const computeFinancials = (s) => {
+  if (!s) return null
+  const lineup  = s.lineup  || []
+  const crew    = s.crew    || []
+  const tiers   = s.tiers   || []
+  const att     = Number(s.att)      || 80
+  const publi   = Number(s.publi)    || 0
+  const extras  = Number(s.extras)   || 0
+  const wPrice  = Number(s.wPrice)   || 2000
+  const wPct    = Number(s.wPct)     || 50
+
+  const totalDjFee       = lineup.reduce((a, dj) => a + (Number(dj.fee) || 0), 0)
+  const totalCrewContrib = crew.reduce((a, c) => a + (Number(c.amount) || 0), 0)
+  const optCosts         = (s.inclAudio ? 50000 : 0) + (s.inclVideo ? 70000 : 0)
+  const totalFixed       = 900000 + totalDjFee + publi + extras + optCosts
+  const netCost          = totalFixed - totalCrewContrib
+
+  let rem = att
+  const sold  = tiers.map(t => { if (rem <= 0) return 0; const sv = Math.min(t.qty, rem); rem -= sv; return sv })
+  const revs  = tiers.map((t, i) => sold[i] * t.price)
+  const tickRev  = revs.reduce((a, b) => a + b, 0)
+  const platFee  = s.inclPlatform ? tickRev * 0.1 : 0
+  const wRev     = Math.round(att * wPct / 100) * wPrice
+  const totalRev = tickRev + wRev - platFee
+  const balance  = totalRev - netCost
+  return { att, netCost, tickRev, wRev, platFee, totalRev, balance, totalDjFee }
+}
+
 // ─── App ──────────────────────────────────────────────────────────────────────
 
 export default function App() {
+  // ── Admin + view ──────────────────────────────────────────────────────────────
+  const [isAdmin, setIsAdmin]           = useState(() => sessionStorage.getItem('hex-admin') === 'true')
+  const [showAdminModal, setShowAdminModal] = useState(false)
+  const [adminPin, setAdminPin]         = useState('')
+  const [adminError, setAdminError]     = useState(false)
+  const [currentView, setCurrentView]   = useState('event') // 'event' | 'dashboard'
+
   // ── Sidebar ───────────────────────────────────────────────────────────────────
   const [sidebarOpen, setSidebarOpen] = useState(
     () => window.innerWidth > 768 ? localStorage.getItem('hex-sidebar') !== 'false' : false
@@ -400,7 +493,7 @@ export default function App() {
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'events'), (snapshot) => {
       const list = snapshot.docs
-        .map(d => ({ id: d.id, name: d.data().name || '', date: d.data().date || '' }))
+        .map(d => ({ id: d.id, ...d.data() }))
         .sort((a, b) => {
           if (a.date && b.date) return b.date.localeCompare(a.date)
           if (a.date) return -1
@@ -531,6 +624,23 @@ export default function App() {
     setDeletingId(null)
   }
 
+  // ── Admin ─────────────────────────────────────────────────────────────────────
+  const tryUnlock = () => {
+    if (adminPin === ADMIN_PASS) {
+      setIsAdmin(true)
+      sessionStorage.setItem('hex-admin', 'true')
+      setShowAdminModal(false)
+      setAdminPin('')
+      setAdminError(false)
+    } else {
+      setAdminError(true)
+    }
+  }
+  const lock = () => {
+    setIsAdmin(false)
+    sessionStorage.removeItem('hex-admin')
+  }
+
   // ── State updaters ────────────────────────────────────────────────────────────
   const set = (key, val) => setState(prev => ({ ...prev, [key]: val }))
 
@@ -579,6 +689,31 @@ export default function App() {
     <>
       <style>{css}</style>
 
+      {/* Admin password modal */}
+      {showAdminModal && (
+        <div className="admin-overlay" onClick={() => { setShowAdminModal(false); setAdminPin(''); setAdminError(false) }}>
+          <div className="admin-modal" onClick={e => e.stopPropagation()}>
+            <h3>ACCESO ADMIN</h3>
+            <p>INGRESÁ LA CONTRASEÑA DE ADMINISTRADOR</p>
+            <input
+              type="password"
+              placeholder="••••••••"
+              value={adminPin}
+              autoFocus
+              onChange={e => { setAdminPin(e.target.value); setAdminError(false) }}
+              onKeyDown={e => e.key === 'Enter' && tryUnlock()}
+            />
+            {adminError && <div className="admin-error-msg">CONTRASEÑA INCORRECTA</div>}
+            <button className="admin-submit" style={{ marginTop: adminError ? 10 : 0 }} onClick={tryUnlock}>
+              DESBLOQUEAR
+            </button>
+            <button className="admin-cancel" onClick={() => { setShowAdminModal(false); setAdminPin(''); setAdminError(false) }}>
+              CANCELAR
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Mobile overlay */}
       <div className={`sidebar-overlay ${sidebarOpen ? 'visible' : ''}`} onClick={() => setSidebarOpen(false)} />
 
@@ -587,7 +722,7 @@ export default function App() {
 
         <div className="sidebar-header">
           <span className="sidebar-label">Eventos</span>
-          <button
+          {isAdmin && <button
             className="sidebar-compose-btn"
             onClick={() => setShowNewForm(v => !v)}
             title="Nuevo evento"
@@ -596,11 +731,11 @@ export default function App() {
               <line x1="12" y1="5" x2="12" y2="19" />
               <line x1="5" y1="12" x2="19" y2="12" />
             </svg>
-          </button>
+          </button>}
         </div>
 
         {/* New event form */}
-        {showNewForm && (
+        {showNewForm && isAdmin && (
           <div className="sidebar-new-form">
             <input
               type="text"
@@ -648,7 +783,8 @@ export default function App() {
                       className="sidebar-name-input"
                       value={name}
                       placeholder="SIN NOMBRE"
-                      onChange={e => set('name', e.target.value.toUpperCase())}
+                      readOnly={!isAdmin}
+                      onChange={e => isAdmin && set('name', e.target.value.toUpperCase())}
                       onClick={e => e.stopPropagation()}
                     />
                   ) : isEditing ? (
@@ -669,13 +805,13 @@ export default function App() {
                     <span className="sidebar-item-name">{ev.name || 'SIN NOMBRE'}</span>
                   )}
 
-                  {/* Actions (edit + delete) or delete confirmation */}
-                  {isDeleting ? (
+                  {/* Actions (edit + delete) — admin only */}
+                  {isAdmin && isDeleting ? (
                     <div className="sidebar-delete-confirm" onClick={e => e.stopPropagation()}>
                       <button className="sidebar-confirm-btn sidebar-confirm-yes" onClick={() => deleteEvent(ev.id)}>SÍ</button>
                       <button className="sidebar-confirm-btn sidebar-confirm-no"  onClick={() => setDeletingId(null)}>NO</button>
                     </div>
-                  ) : (
+                  ) : isAdmin ? (
                     <div className="sidebar-item-actions" onClick={e => e.stopPropagation()}>
                       {/* Rename */}
                       {!isActive && (
@@ -698,19 +834,33 @@ export default function App() {
                         </svg>
                       </button>
                     </div>
-                  )}
+                  ) : null}
                 </div>
 
                 {/* Date row */}
                 {isActive ? (
-                  <input type="date" className="sidebar-date-input" value={date}
-                    onChange={e => set('date', e.target.value)} onClick={e => e.stopPropagation()} />
+                  <input type="date" className="sidebar-date-input" value={date} readOnly={!isAdmin}
+                    onChange={e => isAdmin && set('date', e.target.value)} onClick={e => e.stopPropagation()} />
                 ) : (
                   ev.date && <div className="sidebar-item-date">{formatDate(ev.date)}</div>
                 )}
               </div>
             )
           })}
+        </div>
+
+        {/* Sidebar footer — dashboard nav */}
+        <div className="sidebar-footer">
+          <button
+            className={`sidebar-dash-btn ${currentView === 'dashboard' ? 'active' : ''}`}
+            onClick={() => setCurrentView(v => v === 'dashboard' ? 'event' : 'dashboard')}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+              <rect x="2" y="3" width="7" height="9" rx="1"/><rect x="15" y="3" width="7" height="5" rx="1"/>
+              <rect x="15" y="12" width="7" height="9" rx="1"/><rect x="2" y="16" width="7" height="5" rx="1"/>
+            </svg>
+            Dashboard
+          </button>
         </div>
       </aside>
 
@@ -732,16 +882,152 @@ export default function App() {
               </div>
             </div>
             <div className="subtitle">melt underground · recoleta, caba · cap. 150 · 00:00–06:00</div>
-            {currentEventId && (
-              <div className={`sync-badge ${syncStatus}`}>
-                <div className="sync-dot" />
-                {syncStatus === 'synced' ? 'guardado' : syncStatus === 'saving' ? 'guardando...' : 'error al guardar'}
-              </div>
-            )}
+            <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
+              {currentEventId && currentView === 'event' && (
+                <div className={`sync-badge ${syncStatus}`}>
+                  <div className="sync-dot" />
+                  {syncStatus === 'synced' ? 'guardado' : syncStatus === 'saving' ? 'guardando...' : 'error al guardar'}
+                </div>
+              )}
+              <button
+                className={`lock-btn ${isAdmin ? 'unlocked' : 'locked'}`}
+                onClick={() => isAdmin ? lock() : setShowAdminModal(true)}
+                title={isAdmin ? 'Bloquear edición' : 'Desbloquear edición'}
+              >
+                {isAdmin ? (
+                  <>
+                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <rect x="3" y="11" width="18" height="11" rx="2"/>
+                      <path d="M7 11V7a5 5 0 0 1 9.9-1"/>
+                    </svg>
+                    ADMIN
+                  </>
+                ) : (
+                  <>
+                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <rect x="3" y="11" width="18" height="11" rx="2"/>
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                    </svg>
+                    SOLO LECTURA
+                  </>
+                )}
+              </button>
+            </div>
           </div>
 
-          {/* Empty state */}
-          {!currentEventId && (
+          {/* ── DASHBOARD VIEW ── */}
+          {currentView === 'dashboard' && (() => {
+            const eventsWithData = events.filter(ev => ev.lineup)
+            const finances = eventsWithData.map(ev => ({ ev, fin: computeFinancials(ev) }))
+            const totalRev  = finances.reduce((a, { fin }) => a + (fin?.totalRev  || 0), 0)
+            const totalCost = finances.reduce((a, { fin }) => a + (fin?.netCost   || 0), 0)
+            const totalBal  = finances.reduce((a, { fin }) => a + (fin?.balance   || 0), 0)
+            const avgAtt    = finances.length ? Math.round(finances.reduce((a, { fin }) => a + (fin?.att || 0), 0) / finances.length) : 0
+            const maxRev    = Math.max(...finances.map(({ fin }) => fin?.totalRev || 0), 1)
+            const maxAtt    = Math.max(...finances.map(({ fin }) => fin?.att || 0), 1)
+            const sorted    = [...finances].sort((a, b) => (b.ev.date || '').localeCompare(a.ev.date || ''))
+            return (
+              <>
+                <div className="section-title" style={{ marginBottom:16 }}>resumen general</div>
+
+                {/* KPI row */}
+                <div className="dash-kpi-grid">
+                  <div className="dash-kpi">
+                    <div className="dash-kpi-label">EVENTOS TOTALES</div>
+                    <div className="dash-kpi-value grad">{eventsWithData.length}</div>
+                  </div>
+                  <div className="dash-kpi">
+                    <div className="dash-kpi-label">INGRESOS PROYECTADOS</div>
+                    <div className="dash-kpi-value">{fmt(totalRev)}</div>
+                  </div>
+                  <div className="dash-kpi">
+                    <div className="dash-kpi-label">COSTOS TOTALES</div>
+                    <div className="dash-kpi-value neg">{fmt(totalCost)}</div>
+                  </div>
+                  <div className="dash-kpi">
+                    <div className="dash-kpi-label">BALANCE NETO</div>
+                    <div className={`dash-kpi-value ${totalBal >= 0 ? 'pos' : 'neg'}`}>{totalBal >= 0 ? '+' : ''}{fmt(totalBal)}</div>
+                  </div>
+                  <div className="dash-kpi">
+                    <div className="dash-kpi-label">ASISTENCIA PROM.</div>
+                    <div className="dash-kpi-value">{avgAtt} <span style={{ fontSize:11, color:'#a89ec0' }}>pers.</span></div>
+                  </div>
+                  <div className="dash-kpi">
+                    <div className="dash-kpi-label">TICKET PROM.</div>
+                    <div className="dash-kpi-value">{eventsWithData.length ? fmt(totalRev / eventsWithData.length) : '—'}</div>
+                  </div>
+                </div>
+
+                {/* Revenue chart */}
+                {sorted.length > 0 && <>
+                  <div className="section-title" style={{ marginBottom:12 }}>ingresos por evento</div>
+                  <div style={{ marginBottom:24 }}>
+                    {sorted.map(({ ev, fin }) => (
+                      <div key={ev.id} className="dash-bar-row">
+                        <div className="dash-bar-label">{ev.name || 'SIN NOMBRE'}</div>
+                        <div className="dash-bar-track">
+                          <div className="dash-bar-fill" style={{ width:`${((fin?.totalRev||0)/maxRev*100).toFixed(1)}%`, background:'linear-gradient(90deg,#e879c0,#a78bfa)' }} />
+                        </div>
+                        <div className="dash-bar-val">{fmt(fin?.totalRev||0)}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="section-title" style={{ marginBottom:12 }}>asistencia estimada</div>
+                  <div style={{ marginBottom:24 }}>
+                    {sorted.map(({ ev, fin }) => (
+                      <div key={ev.id} className="dash-bar-row">
+                        <div className="dash-bar-label">{ev.name || 'SIN NOMBRE'}</div>
+                        <div className="dash-bar-track">
+                          <div className="dash-bar-fill" style={{ width:`${((fin?.att||0)/maxAtt*100).toFixed(1)}%`, background:'linear-gradient(90deg,#60a5fa,#a78bfa)' }} />
+                        </div>
+                        <div className="dash-bar-val">{fin?.att||0} pers.</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Per-event breakdown */}
+                  <div className="section-title" style={{ marginBottom:12 }}>desglose por evento</div>
+                  {sorted.map(({ ev, fin }) => (
+                    <div key={ev.id} className="dash-event-row" onClick={() => { setCurrentEventId(ev.id); setCurrentView('event'); setTab(0) }}>
+                      <div className="dash-event-identity">
+                        <div className="dash-event-name">{ev.name || 'SIN NOMBRE'}</div>
+                        {ev.date && <div className="dash-event-date-lbl">{formatDate(ev.date)}</div>}
+                      </div>
+                      <div className="dash-ev-metric">
+                        <div className="dash-ev-metric-lbl">ASISTENCIA</div>
+                        <div className="dash-ev-metric-val">{fin?.att||0}</div>
+                      </div>
+                      <div className="dash-ev-metric">
+                        <div className="dash-ev-metric-lbl">INGRESOS</div>
+                        <div className="dash-ev-metric-val">{fmt(fin?.totalRev||0)}</div>
+                      </div>
+                      <div className="dash-ev-metric">
+                        <div className="dash-ev-metric-lbl">COSTO NETO</div>
+                        <div className="dash-ev-metric-val neg">{fmt(fin?.netCost||0)}</div>
+                      </div>
+                      <div className="dash-ev-metric">
+                        <div className="dash-ev-metric-lbl">BALANCE</div>
+                        <div className={`dash-ev-metric-val ${(fin?.balance||0) >= 0 ? 'pos' : 'neg'}`}>
+                          {(fin?.balance||0) >= 0 ? '+' : ''}{fmt(fin?.balance||0)}
+                        </div>
+                      </div>
+                      <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:8, color:'#c4b8e0', letterSpacing:'0.06em' }}>VER →</div>
+                    </div>
+                  ))}
+                </>}
+
+                {eventsWithData.length === 0 && (
+                  <div style={{ textAlign:'center', padding:'40px 20px', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, color:'#a89ec0', letterSpacing:'0.1em', lineHeight:2 }}>
+                    NO HAY EVENTOS CON DATOS AÚN<br />CREÁ UN EVENTO PARA VER EL DASHBOARD
+                  </div>
+                )}
+              </>
+            )
+          })()}
+
+          {/* Empty state (event view) */}
+          {currentView === 'event' && !currentEventId && (
             <div style={{ textAlign:'center', padding:'60px 20px', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, color:'#a89ec0', letterSpacing:'0.1em', lineHeight:2 }}>
               {events.length === 0
                 ? 'CREÁ TU PRIMER EVENTO CON EL + EN LA BARRA LATERAL'
@@ -751,7 +1037,7 @@ export default function App() {
           )}
 
           {/* Main content */}
-          {currentEventId && loaded && <>
+          {currentView === 'event' && currentEventId && loaded && <>
 
             <div className="tabs">
               {TABS.map((t, i) => (
@@ -759,6 +1045,7 @@ export default function App() {
               ))}
             </div>
 
+            <fieldset disabled={!isAdmin} style={{ border:'none', padding:0, margin:0, minWidth:0 }}>
             {/* ── FINANZAS ── */}
             {tab === 0 && <>
               <div className="section">
@@ -1012,7 +1299,7 @@ export default function App() {
                             <div key={wi} style={{ flex:1, display:'flex', gap:1, justifyContent:'center', marginRight:2 }}>
                               {DAYS.map((_, di) => {
                                 const k = `${ti}-${wi}-${di}`
-                                return <div key={di} className={`day-cell ${cells[k] ? 'on' : ''} ${wi === 4 && di === 5 ? 'ev' : ''}`} onClick={() => toggleCell(k)} title={`${WFULL[wi]} · ${DAYS[di]}`} />
+                                return <div key={di} className={`day-cell ${cells[k] ? 'on' : ''} ${wi === 4 && di === 5 ? 'ev' : ''}`} onClick={() => isAdmin && toggleCell(k)} title={`${WFULL[wi]} · ${DAYS[di]}`} />
                               })}
                             </div>
                           ))}
@@ -1023,6 +1310,8 @@ export default function App() {
                 </div>
               </div>
             </>}
+
+            </fieldset>
 
             <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:'rgba(168,158,192,0.4)', letterSpacing:'0.1em', textAlign:'center', marginTop:40, lineHeight:2 }}>
               OPCIÓN 1 · 100% BARRA→MELT · 100% PUERTA+GUARDARROPA→PRODUCTORA<br />
