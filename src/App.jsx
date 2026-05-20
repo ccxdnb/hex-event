@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
-import { doc, onSnapshot, setDoc } from 'firebase/firestore'
+import { collection, doc, onSnapshot, setDoc, addDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from './firebase'
 
-// ─── Fonts & CSS ────────────────────────────────────────────────────────────
+// ─── Fonts & CSS ─────────────────────────────────────────────────────────────
 
 const FONT_URL = 'https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;600&family=DM+Sans:wght@300;400;500&display=swap'
 
@@ -50,6 +50,39 @@ h1 span { background:linear-gradient(90deg,#e879c0,#a78bfa); -webkit-background-
 .sync-badge.error  .sync-dot { background:#e05585; }
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
 
+/* ── Event selector ── */
+.event-bar { display:flex; align-items:center; gap:8px; margin-bottom:16px; }
+.event-current-btn { flex:1; display:flex; align-items:center; gap:10px; background:rgba(255,255,255,0.65); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); border:1px solid rgba(200,180,240,0.35); border-radius:10px; padding:10px 14px; cursor:pointer; text-align:left; transition:border-color 0.2s; }
+.event-current-btn:hover { border-color:rgba(167,139,250,0.5); }
+.event-current-name { font-family:'Bebas Neue',sans-serif; font-size:17px; letter-spacing:0.06em; color:#1e1535; flex:1; }
+.event-current-date { font-family:'IBM Plex Mono',monospace; font-size:9px; color:#a89ec0; letter-spacing:0.08em; white-space:nowrap; }
+.event-chevron { font-family:'IBM Plex Mono',monospace; font-size:9px; color:#a89ec0; }
+.event-add-btn { font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.12em; padding:10px 14px; background:rgba(167,139,250,0.1); border:1px solid rgba(167,139,250,0.3); color:#8b72e8; border-radius:10px; cursor:pointer; white-space:nowrap; transition:background 0.2s; }
+.event-add-btn:hover { background:rgba(167,139,250,0.2); }
+
+.event-panel { background:rgba(255,255,255,0.72); backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px); border:1px solid rgba(200,180,240,0.35); border-radius:12px; margin-bottom:16px; overflow:hidden; }
+.event-list-inner { padding:6px; }
+.event-empty { padding:16px 12px; font-family:'IBM Plex Mono',monospace; font-size:10px; color:#a89ec0; text-align:center; letter-spacing:0.1em; }
+.event-row { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:8px; cursor:pointer; transition:background 0.15s; }
+.event-row:hover { background:rgba(167,139,250,0.07); }
+.event-row.active { background:rgba(167,139,250,0.12); }
+.event-row-dot { width:5px; height:5px; border-radius:50%; background:rgba(200,180,240,0.4); flex-shrink:0; }
+.event-row.active .event-row-dot { background:linear-gradient(135deg,#e879c0,#a78bfa); }
+.event-row-name { font-family:'Bebas Neue',sans-serif; font-size:15px; letter-spacing:0.06em; color:#1e1535; flex:1; }
+.event-row-date { font-family:'IBM Plex Mono',monospace; font-size:9px; color:#a89ec0; }
+.event-row-badge { font-family:'IBM Plex Mono',monospace; font-size:8px; color:#8b72e8; background:rgba(167,139,250,0.12); border:1px solid rgba(167,139,250,0.25); padding:2px 7px; border-radius:10px; letter-spacing:0.1em; flex-shrink:0; }
+
+.event-form { padding:12px; border-top:1px solid rgba(200,180,240,0.2); display:flex; flex-direction:column; gap:8px; }
+.event-form-label { font-family:'IBM Plex Mono',monospace; font-size:9px; color:#a89ec0; letter-spacing:0.15em; text-transform:uppercase; }
+.event-form-row { display:flex; gap:8px; }
+.event-form-row input[type="text"] { flex:1; width:auto; }
+.event-form-row input[type="date"] { width:150px; color-scheme:light; font-family:'IBM Plex Mono',monospace; font-size:12px; background:rgba(255,255,255,0.8); border:1px solid rgba(200,180,240,0.4); color:#1e1535; padding:5px 9px; border-radius:6px; outline:none; }
+.event-form-row input[type="date"]:focus { border-color:#a78bfa; box-shadow:0 0 0 3px rgba(167,139,250,0.15); }
+.event-form-btn { font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.15em; padding:9px 14px; background:linear-gradient(90deg,rgba(232,121,192,0.12),rgba(167,139,250,0.12)); border:1px solid rgba(167,139,250,0.3); color:#8b72e8; border-radius:8px; cursor:pointer; transition:background 0.2s; text-transform:uppercase; }
+.event-form-btn:disabled { opacity:0.4; cursor:not-allowed; }
+.event-form-btn:not(:disabled):hover { background:linear-gradient(90deg,rgba(232,121,192,0.22),rgba(167,139,250,0.22)); }
+
+/* ── Tabs & layout ── */
 .tabs { display:flex; gap:2px; margin-bottom:28px; border-bottom:1px solid rgba(180,150,220,0.25); overflow-x:auto; }
 .tab { font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.15em; text-transform:uppercase; padding:10px 16px; cursor:pointer; color:#a89ec0; border-bottom:2px solid transparent; transition:all 0.2s; background:none; border-top:none; border-left:none; border-right:none; white-space:nowrap; }
 .tab:hover { color:#a78bfa; }
@@ -128,7 +161,7 @@ input[type="checkbox"] { width:14px; height:14px; accent-color:#a78bfa; cursor:p
 @media(max-width:580px){.grid2,.grid3{grid-template-columns:1fr;}.span2{grid-column:1;}}
 `
 
-// ─── Constants ──────────────────────────────────────────────────────────────
+// ─── Constants ───────────────────────────────────────────────────────────────
 
 const fmt = (n) => '$' + Math.round(n).toLocaleString('es-AR')
 
@@ -144,9 +177,11 @@ const WEEKS = ['S−4', 'S−3', 'S−2', 'S−1', 'S0', 'S+1', 'S+2']
 const WFULL = ['SEMANA −4', 'SEMANA −3', 'SEMANA −2', 'SEMANA −1', 'SEMANA 0', 'SEMANA +1', 'SEMANA +2']
 const DAYS = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
 
-// ─── Default state ───────────────────────────────────────────────────────────
+// ─── Default state ────────────────────────────────────────────────────────────
 
 const DEFAULT_STATE = {
+  name: '',
+  date: '',
   lineup: [
     { time: '00:00 – 01:00', name: 'RIXA',        fee: 0,      role: 'warmup'    },
     { time: '01:00 – 02:00', name: 'VECTRIL',     fee: 0,      role: 'main'      },
@@ -183,30 +218,78 @@ const DEFAULT_STATE = {
   })(),
 }
 
-const DOC_ID = 'hex-event-1'  // cambiá por el nombre del evento si necesitás varios
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-// ─── App ─────────────────────────────────────────────────────────────────────
+const formatDate = (d) => {
+  if (!d) return ''
+  const parts = d.split('-')
+  if (parts.length !== 3) return d
+  const months = ['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC']
+  return `${parts[2]} ${months[parseInt(parts[1]) - 1]} ${parts[0]}`
+}
+
+// ─── App ──────────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [tab, setTab]       = useState(0)
-  const [state, setState]   = useState(DEFAULT_STATE)
-  const [syncStatus, setSyncStatus] = useState('synced') // 'synced' | 'saving' | 'error'
-  const [loaded, setLoaded] = useState(false)
-  const saveTimer = useRef(null)
+  // ── Events list ───────────────────────────────────────────────────────────────
+  const [events, setEvents]           = useState([])
+  const [currentEventId, setCurrentEventId] = useState(
+    () => localStorage.getItem('hex-current-event') || null
+  )
+  const [showPanel, setShowPanel]     = useState(false)
+  const [newName, setNewName]         = useState('')
+  const [newDate, setNewDate]         = useState('')
+  const [creating, setCreating]       = useState(false)
+
+  // ── Current event ─────────────────────────────────────────────────────────────
+  const [tab, setTab]                 = useState(0)
+  const [state, setState]             = useState(DEFAULT_STATE)
+  const [syncStatus, setSyncStatus]   = useState('synced')
+  const [loaded, setLoaded]           = useState(false)
+  const saveTimer      = useRef(null)
   const isRemoteUpdate = useRef(false)
 
-  // ── Destructure state ──────────────────────────────────────────────────────
-  const { lineup, crew, tiers, publi, extras, inclAudio, inclVideo, inclPlatform, att, wPrice, wPct, cells } = state
+  const { name, date, lineup, crew, tiers, publi, extras, inclAudio, inclVideo, inclPlatform, att, wPrice, wPct, cells } = state
 
-  // ── Firebase: subscribe to real-time updates ───────────────────────────────
+  // ── Load events list ──────────────────────────────────────────────────────────
   useEffect(() => {
-    const ref = doc(db, 'events', DOC_ID)
+    const unsub = onSnapshot(collection(db, 'events'), (snapshot) => {
+      const list = snapshot.docs
+        .map(d => ({ id: d.id, name: d.data().name || d.id, date: d.data().date || '' }))
+        .sort((a, b) => {
+          if (a.date && b.date) return b.date.localeCompare(a.date)
+          if (a.date) return -1
+          if (b.date) return 1
+          return a.name.localeCompare(b.name)
+        })
+      setEvents(list)
+      setCurrentEventId(prev => {
+        if (!prev && list.length > 0) return list[0].id
+        return prev
+      })
+      // Auto-open panel if no events exist
+      if (list.length === 0) setShowPanel(true)
+    })
+    return () => unsub()
+  }, [])
+
+  // ── Persist selected event in localStorage ────────────────────────────────────
+  useEffect(() => {
+    if (currentEventId) localStorage.setItem('hex-current-event', currentEventId)
+  }, [currentEventId])
+
+  // ── Subscribe to current event data ──────────────────────────────────────────
+  useEffect(() => {
+    if (!currentEventId) return
+    setLoaded(false)
+    setState(DEFAULT_STATE)
+    const ref = doc(db, 'events', currentEventId)
     const unsub = onSnapshot(
       ref,
       (snap) => {
         if (snap.exists()) {
           isRemoteUpdate.current = true
-          setState(prev => ({ ...prev, ...snap.data() }))
+          setState(prev => ({ ...DEFAULT_STATE, ...snap.data() }))
         }
         setLoaded(true)
         setSyncStatus('synced')
@@ -218,36 +301,55 @@ export default function App() {
       }
     )
     return () => unsub()
-  }, [])
+  }, [currentEventId])
 
-  // ── Firebase: debounced save on every state change ─────────────────────────
+  // ── Debounced save ────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!loaded) return
-    if (isRemoteUpdate.current) {
-      isRemoteUpdate.current = false
-      return
-    }
+    if (!loaded || !currentEventId) return
+    if (isRemoteUpdate.current) { isRemoteUpdate.current = false; return }
     setSyncStatus('saving')
     clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(async () => {
       try {
-        await setDoc(doc(db, 'events', DOC_ID), state, { merge: true })
+        await setDoc(doc(db, 'events', currentEventId), state, { merge: true })
         setSyncStatus('synced')
       } catch (e) {
         console.error('Save error:', e)
         setSyncStatus('error')
       }
-    }, 800) // 800ms debounce — espera que el usuario deje de escribir
-  }, [state, loaded])
+    }, 800)
+  }, [state, loaded, currentEventId])
 
-  // ── State updaters ─────────────────────────────────────────────────────────
+  // ── Create new event ──────────────────────────────────────────────────────────
+  const createEvent = async () => {
+    if (!newName.trim()) return
+    setCreating(true)
+    try {
+      const newDoc = await addDoc(collection(db, 'events'), {
+        ...DEFAULT_STATE,
+        name: newName.trim().toUpperCase(),
+        date: newDate,
+        createdAt: serverTimestamp(),
+      })
+      setCurrentEventId(newDoc.id)
+      setNewName('')
+      setNewDate('')
+      setShowPanel(false)
+      setTab(0)
+    } catch (e) {
+      console.error('Create error:', e)
+    }
+    setCreating(false)
+  }
+
+  // ── State updaters ────────────────────────────────────────────────────────────
   const set = (key, val) => setState(prev => ({ ...prev, [key]: val }))
 
   const upLineup = (i, f, v) => {
     const l = [...lineup]; l[i] = { ...l[i], [f]: v }; set('lineup', l)
   }
-  const addSlot   = () => set('lineup', [...lineup, { time: '', name: '', fee: 0, role: 'main' }])
-  const removeSlot = i => set('lineup', lineup.filter((_, idx) => idx !== i))
+  const addSlot    = () => set('lineup', [...lineup, { time: '', name: '', fee: 0, role: 'main' }])
+  const removeSlot = i  => set('lineup', lineup.filter((_, idx) => idx !== i))
 
   const upTier = (i, f, v) => {
     const t = [...tiers]; t[i] = { ...t[i], [f]: Number(v) }; set('tiers', t)
@@ -259,26 +361,28 @@ export default function App() {
 
   const toggleCell = (k) => set('cells', { ...cells, [k]: !cells[k] })
 
-  // ── Derived financials ─────────────────────────────────────────────────────
-  const totalDjFee      = lineup.reduce((a, dj) => a + (Number(dj.fee) || 0), 0)
-  const totalCrewContrib = crew.reduce((a, c)  => a + (Number(c.amount) || 0), 0)
+  // ── Derived financials ────────────────────────────────────────────────────────
+  const totalDjFee       = lineup.reduce((a, dj) => a + (Number(dj.fee) || 0), 0)
+  const totalCrewContrib = crew.reduce((a, c)    => a + (Number(c.amount) || 0), 0)
   const optCosts         = (inclAudio ? 50000 : 0) + (inclVideo ? 70000 : 0)
   const totalFixed       = 900000 + totalDjFee + publi + extras + optCosts
   const netCost          = totalFixed - totalCrewContrib
 
   let rem = att
-  const sold = tiers.map(t => { if (rem <= 0) return 0; const s = Math.min(t.qty, rem); rem -= s; return s })
+  const sold  = tiers.map(t => { if (rem <= 0) return 0; const s = Math.min(t.qty, rem); rem -= s; return s })
   const revs  = tiers.map((t, i) => sold[i] * t.price)
-  const tickRev  = revs.reduce((a, b) => a + b, 0)
-  const platFee  = inclPlatform ? tickRev * 0.1 : 0
-  const wRev     = Math.round(att * wPct / 100) * wPrice
-  const totalRev = tickRev + wRev - platFee
-  const balance  = totalRev - netCost
-  const cov      = Math.min(100, Math.round(totalRev / Math.max(netCost, 1) * 100))
+  const tickRev   = revs.reduce((a, b) => a + b, 0)
+  const platFee   = inclPlatform ? tickRev * 0.1 : 0
+  const wRev      = Math.round(att * wPct / 100) * wPrice
+  const totalRev  = tickRev + wRev - platFee
+  const balance   = totalRev - netCost
+  const cov       = Math.min(100, Math.round(totalRev / Math.max(netCost, 1) * 100))
 
   const TABS = ['FINANZAS', 'LINEUP', 'CREW', 'PRODUCCIÓN']
+  const currentEvent = events.find(e => e.id === currentEventId)
 
-  if (!loaded) return (
+  // ── Loading screen ────────────────────────────────────────────────────────────
+  if (!loaded && !!currentEventId) return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', fontFamily:'IBM Plex Mono, monospace', fontSize:12, color:'#a89ec0', letterSpacing:'0.1em' }}>
       CARGANDO...
     </div>
@@ -289,293 +393,364 @@ export default function App() {
       <style>{css}</style>
       <div className="app">
 
-        {/* Header */}
+        {/* ── Header ── */}
         <div className="header">
           <div className="label-tag">@theomenrecords × @meltunderground · drum &amp; bass</div>
           <h1>HEX <span>EVENT</span></h1>
           <div className="subtitle">melt underground · recoleta, caba · cap. 150 · 00:00–06:00</div>
-          <div className={`sync-badge ${syncStatus}`}>
-            <div className="sync-dot" />
-            {syncStatus === 'synced' ? 'guardado' : syncStatus === 'saving' ? 'guardando...' : 'error al guardar'}
-          </div>
+          {currentEventId && (
+            <div className={`sync-badge ${syncStatus}`}>
+              <div className="sync-dot" />
+              {syncStatus === 'synced' ? 'guardado' : syncStatus === 'saving' ? 'guardando...' : 'error al guardar'}
+            </div>
+          )}
         </div>
 
-        {/* Tabs */}
-        <div className="tabs">
-          {TABS.map((t, i) => (
-            <button key={i} className={`tab ${tab === i ? 'active' : ''}`} onClick={() => setTab(i)}>{t}</button>
-          ))}
+        {/* ── Event selector bar ── */}
+        <div className="event-bar">
+          <button className="event-current-btn" onClick={() => setShowPanel(p => !p)}>
+            <span className="event-current-name">
+              {currentEvent?.name || name || (currentEventId ? currentEventId : 'SELECCIONÁ UN EVENTO')}
+            </span>
+            {(currentEvent?.date || date) && (
+              <span className="event-current-date">{formatDate(currentEvent?.date || date)}</span>
+            )}
+            <span className="event-chevron">{showPanel ? '▲' : '▼'}</span>
+          </button>
+          <button className="event-add-btn" onClick={() => setShowPanel(true)}>+ NUEVO</button>
         </div>
 
-        {/* ── FINANZAS ── */}
-        {tab === 0 && <>
-          <div className="section">
-            <div className="section-title">costos fijos</div>
-            <div className="grid2">
-              <div className="stat">
-                <div className="stat-label">VENUE MELT (opción 1)</div>
-                <div className="stat-value">{fmt(900000)}</div>
+        {/* ── Event panel ── */}
+        {showPanel && (
+          <div className="event-panel">
+            <div className="event-list-inner">
+              {events.length === 0
+                ? <div className="event-empty">SIN EVENTOS · CREÁ EL PRIMERO</div>
+                : events.map(ev => (
+                    <div
+                      key={ev.id}
+                      className={`event-row ${ev.id === currentEventId ? 'active' : ''}`}
+                      onClick={() => { setCurrentEventId(ev.id); setShowPanel(false); setTab(0) }}
+                    >
+                      <div className="event-row-dot" />
+                      <span className="event-row-name">{ev.name}</span>
+                      {ev.date && <span className="event-row-date">{formatDate(ev.date)}</span>}
+                      {ev.id === currentEventId && <span className="event-row-badge">ACTIVO</span>}
+                    </div>
+                  ))
+              }
+            </div>
+            <div className="event-form">
+              <div className="event-form-label">Nuevo evento</div>
+              <div className="event-form-row">
+                <input
+                  type="text"
+                  placeholder="NOMBRE DEL EVENTO"
+                  value={newName}
+                  onChange={e => setNewName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && createEvent()}
+                />
+                <input
+                  type="date"
+                  value={newDate}
+                  onChange={e => setNewDate(e.target.value)}
+                />
               </div>
-              <div className="stat">
-                <div className="stat-label">FEE DJS (desde lineup)</div>
-                <div className="stat-value">{fmt(totalDjFee)}</div>
-                <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:'#a89ec0', marginTop:4 }}>editá en tab LINEUP</div>
-              </div>
+              <button className="event-form-btn" onClick={createEvent} disabled={creating || !newName.trim()}>
+                {creating ? 'CREANDO...' : 'CREAR EVENTO'}
+              </button>
             </div>
           </div>
+        )}
 
-          <div className="section">
-            <div className="section-title">costos opcionales</div>
-            <div className="card" style={{ padding:'4px 0' }}>
-              {[
-                { l:'Publicidad / Flyers',            s:'editable',            edit:true,  val:publi,        set:(v) => set('publi', v)        },
-                { l:'Otros gastos',                   s:'editable',            edit:true,  val:extras,       set:(v) => set('extras', v)       },
-                { l:'Grabación audio (noche compl.)', s:fmt(50000),            edit:false, checked:inclAudio,    toggle:() => set('inclAudio', !inclAudio)       },
-                { l:'Grabación video (GoPro 360)',    s:fmt(70000),            edit:false, checked:inclVideo,    toggle:() => set('inclVideo', !inclVideo)       },
-                { l:'Fee plataforma ticketing',       s:'~10% sobre entradas', edit:false, checked:inclPlatform, toggle:() => set('inclPlatform', !inclPlatform) },
-              ].map((row, i) => (
-                <div className="toggle-row" key={i}>
-                  <div className="toggle-label">{row.l}<span className="toggle-sub">{row.s}</span></div>
-                  {row.edit
-                    ? <input type="number" value={row.val} onChange={e => row.set(Number(e.target.value))} step={5000} min={0} />
-                    : <input type="checkbox" checked={row.checked} onChange={row.toggle} />
-                  }
-                </div>
-              ))}
-            </div>
+        {/* ── No event selected ── */}
+        {!currentEventId && (
+          <div style={{ textAlign:'center', padding:'60px 20px', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, color:'#a89ec0', letterSpacing:'0.1em', lineHeight:2 }}>
+            CREÁ TU PRIMER EVENTO USANDO EL PANEL DE ARRIBA
           </div>
+        )}
 
-          <div className="section">
-            <div className="section-title">asistencia estimada</div>
-            <div className="input-row">
-              <span className="input-label">personas (máx. 150)</span>
-              <input type="range" min={20} max={150} step={5} value={att} onChange={e => set('att', Number(e.target.value))} />
-              <span className="range-val">{att}</span>
-            </div>
-          </div>
+        {/* ── Main content (only when an event is selected) ── */}
+        {currentEventId && loaded && <>
 
-          <div className="section">
-            <div className="section-title">tandas de ticketing</div>
-            <div className="grid3">
-              {tiers.map((t, i) => (
-                <div key={i} className={`tier-card t${i + 1}`}>
-                  <div className="tier-name">{t.name}</div>
-                  <div className="tier-desc">{t.desc}</div>
-                  {i < 2
-                    ? <div className="tier-field"><label>CUPO</label><input type="number" value={t.qty} min={1} max={149} onChange={e => upTier(i, 'qty', e.target.value)} /></div>
-                    : <div className="tier-field"><label>DISP.</label><input type="number" value={sold[i]} disabled style={{ opacity:0.4 }} /></div>
-                  }
-                  <div className="tier-field"><label>PRECIO $ARS</label><input type="number" value={t.price} step={500} min={0} onChange={e => upTier(i, 'price', e.target.value)} /></div>
-                  <div className="tier-revenue">vendidas: <span>{sold[i]}</span><br />subtotal: <span>{fmt(revs[i])}</span></div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="section">
-            <div className="section-title">guardarropa (100% productora)</div>
-            <div className="card" style={{ padding:'4px 0' }}>
-              <div className="toggle-row">
-                <span className="toggle-label">precio por persona</span>
-                <input type="number" value={wPrice} step={500} min={0} onChange={e => set('wPrice', Number(e.target.value))} />
-              </div>
-              <div className="toggle-row">
-                <span className="toggle-label">% personas que usan guardarropa</span>
-                <input type="range" min={0} max={100} step={5} value={wPct} onChange={e => set('wPct', Number(e.target.value))} />
-                <span className="range-val">{wPct}%</span>
-              </div>
-              <div style={{ padding:'8px 14px', fontFamily:"'IBM Plex Mono',monospace", fontSize:10, color:'#a89ec0' }}>
-                estimado: {fmt(wRev)} · {Math.round(att * wPct / 100)} personas
-              </div>
-            </div>
-          </div>
-
-          <div className="section">
-            <div className="section-title">resumen financiero</div>
-            <div className="grid2">
-              <div className="stat"><div className="stat-label">TICKETS</div><div className="stat-value">{fmt(tickRev)}</div></div>
-              <div className="stat"><div className="stat-label">GUARDARROPA</div><div className="stat-value">{fmt(wRev)}</div></div>
-              {inclPlatform && <div className="stat highlight"><div className="stat-label">FEE PLATAFORMA (−)</div><div className="stat-value">−{fmt(platFee)}</div></div>}
-              <div className={`stat ${inclPlatform ? '' : 'span2'}`}><div className="stat-label">INGRESOS TOTALES</div><div className="stat-value">{fmt(totalRev)}</div></div>
-            </div>
-
-            <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, color:'#a89ec0', letterSpacing:'0.12em', margin:'14px 0 8px', textTransform:'uppercase' }}>desglose de costos</div>
-            <div style={{ background:'rgba(255,255,255,0.65)', backdropFilter:'blur(12px)', border:'1px solid rgba(200,180,240,0.35)', borderRadius:12, overflow:'hidden', marginBottom:8 }}>
-              {[
-                ['VENUE (opción 1)', 900000],
-                ['DJS', totalDjFee],
-                ...(publi  > 0 ? [['PUBLICIDAD', publi]]         : []),
-                ...(extras > 0 ? [['OTROS', extras]]             : []),
-                ...(inclAudio   ? [['GRABACIÓN AUDIO', 50000]]   : []),
-                ...(inclVideo   ? [['GRABACIÓN VIDEO', 70000]]   : []),
-              ].map(([label, val], i) => (
-                <div key={i} style={{ display:'flex', justifyContent:'space-between', padding:'9px 14px', borderBottom:'1px solid rgba(200,180,240,0.15)' }}>
-                  <span style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, color:'#a89ec0', letterSpacing:'0.08em' }}>{label}</span>
-                  <span style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, color: val > 0 ? '#1e1535' : 'rgba(168,158,192,0.4)', fontWeight:600 }}>{fmt(val)}</span>
-                </div>
-              ))}
-              <div style={{ display:'flex', justifyContent:'space-between', padding:'9px 14px', borderBottom:'1px solid rgba(200,180,240,0.15)' }}>
-                <span style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, color:'#a89ec0', letterSpacing:'0.08em' }}>SUBTOTAL</span>
-                <span style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, color:'#1e1535', fontWeight:600 }}>{fmt(totalFixed)}</span>
-              </div>
-              <div style={{ display:'flex', justifyContent:'space-between', padding:'9px 14px', borderBottom:'1px solid rgba(200,180,240,0.15)', background:'rgba(210,245,230,0.35)' }}>
-                <span style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, color:'#2a9068', letterSpacing:'0.08em' }}>APORTES CREW</span>
-                <span style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, color:'#2a9068', fontWeight:600 }}>−{fmt(totalCrewContrib)}</span>
-              </div>
-              <div style={{ display:'flex', justifyContent:'space-between', padding:'11px 14px', background:'rgba(255,220,235,0.45)' }}>
-                <span style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, color:'#a89ec0', letterSpacing:'0.12em' }}>COSTO NETO</span>
-                <span style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:14, color:'#e05585', fontWeight:600 }}>{fmt(netCost)}</span>
-              </div>
-            </div>
-
-            <div className="progress-bar">
-              <div className="progress-fill" style={{ width:`${cov}%`, background: balance >= 0 ? 'linear-gradient(90deg,#34a87a,#44d4a0)' : 'linear-gradient(90deg,#e879c0,#e05585)' }} />
-            </div>
-            <div className="progress-label"><span>$0</span><span>cobertura {cov}%</span><span>{fmt(netCost)}</span></div>
-            <div className={`verdict ${balance >= 0 ? 'ok' : 'loss'}`}>
-              <div className="verdict-title">{balance >= 0 ? '✓ resultado positivo' : '⚠ pérdida proyectada'}</div>
-              {balance >= 0
-                ? `GANANCIA: ${fmt(balance)} con ${att} personas.`
-                : `PÉRDIDA: ${fmt(Math.abs(balance))} con ${att} personas.\nNecesitás aprox. ${Math.ceil(netCost / (totalRev / Math.max(att, 1)))} personas para cubrir el costo neto.`}
-            </div>
-          </div>
-        </>}
-
-        {/* ── LINEUP ── */}
-        {tab === 1 && <>
-          <div className="section">
-            <div className="section-title">lineup editable</div>
-            {lineup.map((dj, i) => (
-              <div key={i} style={{ background:'rgba(255,255,255,0.65)', backdropFilter:'blur(12px)', border:'1px solid rgba(200,180,240,0.3)', borderRadius:10, padding:'12px 14px', marginBottom:6, borderLeft:`3px solid ${dj.role === 'headliner' ? '#a78bfa' : dj.role === 'main' ? '#fb923c' : dj.role === 'close' ? '#60a5fa' : 'rgba(200,180,240,0.4)'}` }}>
-                <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
-                  <div style={{ flex:'0 0 auto' }}>
-                    <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:'#a89ec0', marginBottom:3, letterSpacing:'0.1em' }}>HORARIO</div>
-                    <input type="text" value={dj.time} onChange={e => upLineup(i, 'time', e.target.value)} placeholder="00:00 – 01:00" style={{ width:130 }} />
-                  </div>
-                  <div style={{ flex:'1 1 120px' }}>
-                    <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:'#a89ec0', marginBottom:3, letterSpacing:'0.1em' }}>NOMBRE</div>
-                    <input type="text" value={dj.name} onChange={e => upLineup(i, 'name', e.target.value)} placeholder="DJ NAME" style={{ width:'100%', fontFamily:"'Bebas Neue',sans-serif", fontSize:18, letterSpacing:'0.06em' }} />
-                  </div>
-                  <div style={{ flex:'0 0 auto' }}>
-                    <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:'#a89ec0', marginBottom:3, letterSpacing:'0.1em' }}>ROL</div>
-                    <select value={dj.role} onChange={e => upLineup(i, 'role', e.target.value)} style={{ background:'rgba(255,255,255,0.8)', border:'1px solid rgba(200,180,240,0.4)', color:'#1e1535', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, padding:'5px 8px', borderRadius:6, outline:'none' }}>
-                      {ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
-                    </select>
-                  </div>
-                  <div style={{ flex:'0 0 auto' }}>
-                    <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:'#a89ec0', marginBottom:3, letterSpacing:'0.1em' }}>FEE $ARS</div>
-                    <input type="number" value={dj.fee} min={0} step={5000} onChange={e => upLineup(i, 'fee', Number(e.target.value))} style={{ width:120, color: dj.fee > 0 ? '#ea7c3a' : '#a89ec0', fontWeight:600 }} />
-                  </div>
-                  <button onClick={() => removeSlot(i)} style={{ background:'none', border:'1px solid rgba(224,85,133,0.3)', color:'#e05585', fontFamily:"'IBM Plex Mono',monospace", fontSize:10, padding:'5px 10px', borderRadius:6, cursor:'pointer', marginTop:14, letterSpacing:'0.1em' }}>✕</button>
-                </div>
-              </div>
-            ))}
-            <button onClick={addSlot} style={{ width:'100%', background:'rgba(255,255,255,0.5)', border:'1px dashed rgba(200,180,240,0.5)', color:'#a89ec0', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, padding:'12px', borderRadius:8, cursor:'pointer', letterSpacing:'0.12em', marginTop:4 }}>
-              + AGREGAR SLOT
-            </button>
-          </div>
-
-          <div className="section">
-            <div className="section-title">resumen de fees</div>
-            <div className="grid3">
-              {lineup.filter(dj => dj.fee > 0).map((dj, i) => (
-                <div key={i} className="stat">
-                  <div className="stat-label">{dj.name || '—'}</div>
-                  <div className="stat-value" style={{ fontSize:14 }}>{fmt(dj.fee)}</div>
-                </div>
-              ))}
-              <div className="stat highlight span2">
-                <div className="stat-label">TOTAL FEES DJS</div>
-                <div className="stat-value">{fmt(totalDjFee)}</div>
-              </div>
-            </div>
-          </div>
-
-          <div className="section">
-            <div className="section-title">rider técnico</div>
-            <div className="card">
-              <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, color:'#a89ec0', lineHeight:2 }}>
-                PA: 4× dB Technologies · 2× subs QSC · 2× retornos QSC<br />
-                DJ Booth: CDJs Nexus 2 + DJM 900 NXS2<br />
-                Vinilos: 2× Reloop 8000 MK2 + Model 1<br />
-                Ilum. completa · Láser · Humo · Pantalla · Proyector (alquiler externo)
-              </div>
-            </div>
-          </div>
-        </>}
-
-        {/* ── CREW ── */}
-        {tab === 2 && <>
-          <div className="section">
-            <div className="section-title">team the omen records</div>
-            {crew.map((c, i) => (
-              <div key={i} className="crew-row">
-                <span className="crew-name">{c.name}</span>
-                <label style={{ display:'flex', alignItems:'center', gap:6, cursor:'pointer' }}>
-                  <input type="checkbox" checked={c.paid} onChange={e => upCrew(i, 'paid', e.target.checked)} />
-                  <span className={`crew-badge ${c.paid ? 'badge-paid' : 'badge-unpaid'}`}>{c.paid ? 'pagó' : 'pendiente'}</span>
-                </label>
-                <label style={{ display:'flex', alignItems:'center', gap:6, cursor:'pointer' }}>
-                  <input type="checkbox" checked={c.access} onChange={e => upCrew(i, 'access', e.target.checked)} />
-                  <span className={`crew-badge ${c.access ? 'badge-access' : 'badge-noaccess'}`}>{c.access ? 'acceso' : 'sin acceso'}</span>
-                </label>
-                <input type="number" value={c.amount} step={1000} min={0} onChange={e => upCrew(i, 'amount', Number(e.target.value))} style={{ width:100 }} placeholder="aporte $" />
-              </div>
+          {/* Tabs */}
+          <div className="tabs">
+            {TABS.map((t, i) => (
+              <button key={i} className={`tab ${tab === i ? 'active' : ''}`} onClick={() => setTab(i)}>{t}</button>
             ))}
           </div>
-          <div className="section">
-            <div className="section-title">resumen</div>
-            <div className="grid3">
-              <div className="stat"><div className="stat-label">TOTAL CREW</div><div className="stat-value">{crew.length}</div></div>
-              <div className="stat positive"><div className="stat-label">CON ACCESO</div><div className="stat-value">{crew.filter(c => c.access).length}</div></div>
-              <div className="stat positive"><div className="stat-label">TOTAL APORTADO</div><div className="stat-value">{fmt(totalCrewContrib)}</div></div>
-            </div>
-          </div>
-        </>}
 
-        {/* ── PRODUCCIÓN ── */}
-        {tab === 3 && <>
-          <div className="section">
-            <div className="section-title">cronograma de producción</div>
-            <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, color:'#a89ec0', marginBottom:12, letterSpacing:'0.06em' }}>
-              Clic en celdas para marcar días activos · <span style={{ color:'#a78bfa' }}>■</span> = semana del evento (S0)
-            </div>
-            <div className="timeline-scroll">
-              <div style={{ minWidth:640 }}>
-                <div style={{ display:'flex', marginLeft:164, marginBottom:4 }}>
-                  {WEEKS.map((w, wi) => (
-                    <div key={wi} style={{ flex:1, textAlign:'center' }}>
-                      <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:8, color: wi === 4 ? '#a78bfa' : 'rgba(200,180,240,0.5)', letterSpacing:'0.1em', textTransform:'uppercase', marginBottom:2 }}>{w}</div>
-                      <div style={{ display:'flex', gap:1, justifyContent:'center' }}>
-                        {DAYS.map(d => <div key={d} style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:7, color:'rgba(200,180,240,0.5)', width:16, textAlign:'center' }}>{d}</div>)}
-                      </div>
-                    </div>
-                  ))}
+          {/* ── FINANZAS ── */}
+          {tab === 0 && <>
+            <div className="section">
+              <div className="section-title">costos fijos</div>
+              <div className="grid2">
+                <div className="stat">
+                  <div className="stat-label">VENUE MELT (opción 1)</div>
+                  <div className="stat-value">{fmt(900000)}</div>
                 </div>
-                {TASKS.map((task, ti) => (
-                  <div key={ti} style={{ display:'flex', alignItems:'center', marginBottom:3 }}>
-                    <div style={{ fontSize:11, color:'#6b5e88', minWidth:164, padding:'6px 0', fontFamily:"'IBM Plex Mono',monospace", letterSpacing:'0.02em' }}>{task}</div>
-                    <div style={{ display:'flex', flex:1 }}>
-                      {WEEKS.map((_, wi) => (
-                        <div key={wi} style={{ flex:1, display:'flex', gap:1, justifyContent:'center', marginRight:2 }}>
-                          {DAYS.map((_, di) => {
-                            const k = `${ti}-${wi}-${di}`
-                            return <div key={di} className={`day-cell ${cells[k] ? 'on' : ''} ${wi === 4 && di === 5 ? 'ev' : ''}`} onClick={() => toggleCell(k)} title={`${WFULL[wi]} · ${DAYS[di]}`} />
-                          })}
-                        </div>
-                      ))}
-                    </div>
+                <div className="stat">
+                  <div className="stat-label">FEE DJS (desde lineup)</div>
+                  <div className="stat-value">{fmt(totalDjFee)}</div>
+                  <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:'#a89ec0', marginTop:4 }}>editá en tab LINEUP</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="section">
+              <div className="section-title">costos opcionales</div>
+              <div className="card" style={{ padding:'4px 0' }}>
+                {[
+                  { l:'Publicidad / Flyers',            s:'editable',            edit:true,  val:publi,        set:(v) => set('publi', v)                    },
+                  { l:'Otros gastos',                   s:'editable',            edit:true,  val:extras,       set:(v) => set('extras', v)                   },
+                  { l:'Grabación audio (noche compl.)', s:fmt(50000),            edit:false, checked:inclAudio,    toggle:() => set('inclAudio', !inclAudio)       },
+                  { l:'Grabación video (GoPro 360)',    s:fmt(70000),            edit:false, checked:inclVideo,    toggle:() => set('inclVideo', !inclVideo)       },
+                  { l:'Fee plataforma ticketing',       s:'~10% sobre entradas', edit:false, checked:inclPlatform, toggle:() => set('inclPlatform', !inclPlatform) },
+                ].map((row, i) => (
+                  <div className="toggle-row" key={i}>
+                    <div className="toggle-label">{row.l}<span className="toggle-sub">{row.s}</span></div>
+                    {row.edit
+                      ? <input type="number" value={row.val} onChange={e => row.set(Number(e.target.value))} step={5000} min={0} />
+                      : <input type="checkbox" checked={row.checked} onChange={row.toggle} />
+                    }
                   </div>
                 ))}
               </div>
             </div>
-          </div>
-        </>}
 
-        <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:'rgba(168,158,192,0.4)', letterSpacing:'0.1em', textAlign:'center', marginTop:40, lineHeight:2 }}>
-          OPCIÓN 1 · 100% BARRA→MELT · 100% PUERTA+GUARDARROPA→PRODUCTORA<br />
-          MELT UNDERGROUND · LAPRIDA Y AV. SANTA FE · RECOLETA · CAP. 150
-        </div>
+            <div className="section">
+              <div className="section-title">asistencia estimada</div>
+              <div className="input-row">
+                <span className="input-label">personas (máx. 150)</span>
+                <input type="range" min={20} max={150} step={5} value={att} onChange={e => set('att', Number(e.target.value))} />
+                <span className="range-val">{att}</span>
+              </div>
+            </div>
+
+            <div className="section">
+              <div className="section-title">tandas de ticketing</div>
+              <div className="grid3">
+                {tiers.map((t, i) => (
+                  <div key={i} className={`tier-card t${i + 1}`}>
+                    <div className="tier-name">{t.name}</div>
+                    <div className="tier-desc">{t.desc}</div>
+                    {i < 2
+                      ? <div className="tier-field"><label>CUPO</label><input type="number" value={t.qty} min={1} max={149} onChange={e => upTier(i, 'qty', e.target.value)} /></div>
+                      : <div className="tier-field"><label>DISP.</label><input type="number" value={sold[i]} disabled style={{ opacity:0.4 }} /></div>
+                    }
+                    <div className="tier-field"><label>PRECIO $ARS</label><input type="number" value={t.price} step={500} min={0} onChange={e => upTier(i, 'price', e.target.value)} /></div>
+                    <div className="tier-revenue">vendidas: <span>{sold[i]}</span><br />subtotal: <span>{fmt(revs[i])}</span></div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="section">
+              <div className="section-title">guardarropa (100% productora)</div>
+              <div className="card" style={{ padding:'4px 0' }}>
+                <div className="toggle-row">
+                  <span className="toggle-label">precio por persona</span>
+                  <input type="number" value={wPrice} step={500} min={0} onChange={e => set('wPrice', Number(e.target.value))} />
+                </div>
+                <div className="toggle-row">
+                  <span className="toggle-label">% personas que usan guardarropa</span>
+                  <input type="range" min={0} max={100} step={5} value={wPct} onChange={e => set('wPct', Number(e.target.value))} />
+                  <span className="range-val">{wPct}%</span>
+                </div>
+                <div style={{ padding:'8px 14px', fontFamily:"'IBM Plex Mono',monospace", fontSize:10, color:'#a89ec0' }}>
+                  estimado: {fmt(wRev)} · {Math.round(att * wPct / 100)} personas
+                </div>
+              </div>
+            </div>
+
+            <div className="section">
+              <div className="section-title">resumen financiero</div>
+              <div className="grid2">
+                <div className="stat"><div className="stat-label">TICKETS</div><div className="stat-value">{fmt(tickRev)}</div></div>
+                <div className="stat"><div className="stat-label">GUARDARROPA</div><div className="stat-value">{fmt(wRev)}</div></div>
+                {inclPlatform && <div className="stat highlight"><div className="stat-label">FEE PLATAFORMA (−)</div><div className="stat-value">−{fmt(platFee)}</div></div>}
+                <div className={`stat ${inclPlatform ? '' : 'span2'}`}><div className="stat-label">INGRESOS TOTALES</div><div className="stat-value">{fmt(totalRev)}</div></div>
+              </div>
+
+              <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, color:'#a89ec0', letterSpacing:'0.12em', margin:'14px 0 8px', textTransform:'uppercase' }}>desglose de costos</div>
+              <div style={{ background:'rgba(255,255,255,0.65)', backdropFilter:'blur(12px)', border:'1px solid rgba(200,180,240,0.35)', borderRadius:12, overflow:'hidden', marginBottom:8 }}>
+                {[
+                  ['VENUE (opción 1)', 900000],
+                  ['DJS', totalDjFee],
+                  ...(publi  > 0 ? [['PUBLICIDAD', publi]]         : []),
+                  ...(extras > 0 ? [['OTROS', extras]]             : []),
+                  ...(inclAudio   ? [['GRABACIÓN AUDIO', 50000]]   : []),
+                  ...(inclVideo   ? [['GRABACIÓN VIDEO', 70000]]   : []),
+                ].map(([label, val], i) => (
+                  <div key={i} style={{ display:'flex', justifyContent:'space-between', padding:'9px 14px', borderBottom:'1px solid rgba(200,180,240,0.15)' }}>
+                    <span style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, color:'#a89ec0', letterSpacing:'0.08em' }}>{label}</span>
+                    <span style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, color: val > 0 ? '#1e1535' : 'rgba(168,158,192,0.4)', fontWeight:600 }}>{fmt(val)}</span>
+                  </div>
+                ))}
+                <div style={{ display:'flex', justifyContent:'space-between', padding:'9px 14px', borderBottom:'1px solid rgba(200,180,240,0.15)' }}>
+                  <span style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, color:'#a89ec0', letterSpacing:'0.08em' }}>SUBTOTAL</span>
+                  <span style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, color:'#1e1535', fontWeight:600 }}>{fmt(totalFixed)}</span>
+                </div>
+                <div style={{ display:'flex', justifyContent:'space-between', padding:'9px 14px', borderBottom:'1px solid rgba(200,180,240,0.15)', background:'rgba(210,245,230,0.35)' }}>
+                  <span style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, color:'#2a9068', letterSpacing:'0.08em' }}>APORTES CREW</span>
+                  <span style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, color:'#2a9068', fontWeight:600 }}>−{fmt(totalCrewContrib)}</span>
+                </div>
+                <div style={{ display:'flex', justifyContent:'space-between', padding:'11px 14px', background:'rgba(255,220,235,0.45)' }}>
+                  <span style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, color:'#a89ec0', letterSpacing:'0.12em' }}>COSTO NETO</span>
+                  <span style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:14, color:'#e05585', fontWeight:600 }}>{fmt(netCost)}</span>
+                </div>
+              </div>
+
+              <div className="progress-bar">
+                <div className="progress-fill" style={{ width:`${cov}%`, background: balance >= 0 ? 'linear-gradient(90deg,#34a87a,#44d4a0)' : 'linear-gradient(90deg,#e879c0,#e05585)' }} />
+              </div>
+              <div className="progress-label"><span>$0</span><span>cobertura {cov}%</span><span>{fmt(netCost)}</span></div>
+              <div className={`verdict ${balance >= 0 ? 'ok' : 'loss'}`}>
+                <div className="verdict-title">{balance >= 0 ? '✓ resultado positivo' : '⚠ pérdida proyectada'}</div>
+                {balance >= 0
+                  ? `GANANCIA: ${fmt(balance)} con ${att} personas.`
+                  : `PÉRDIDA: ${fmt(Math.abs(balance))} con ${att} personas.\nNecesitás aprox. ${Math.ceil(netCost / (totalRev / Math.max(att, 1)))} personas para cubrir el costo neto.`}
+              </div>
+            </div>
+          </>}
+
+          {/* ── LINEUP ── */}
+          {tab === 1 && <>
+            <div className="section">
+              <div className="section-title">lineup editable</div>
+              {lineup.map((dj, i) => (
+                <div key={i} style={{ background:'rgba(255,255,255,0.65)', backdropFilter:'blur(12px)', border:'1px solid rgba(200,180,240,0.3)', borderRadius:10, padding:'12px 14px', marginBottom:6, borderLeft:`3px solid ${dj.role === 'headliner' ? '#a78bfa' : dj.role === 'main' ? '#fb923c' : dj.role === 'close' ? '#60a5fa' : 'rgba(200,180,240,0.4)'}` }}>
+                  <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
+                    <div style={{ flex:'0 0 auto' }}>
+                      <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:'#a89ec0', marginBottom:3, letterSpacing:'0.1em' }}>HORARIO</div>
+                      <input type="text" value={dj.time} onChange={e => upLineup(i, 'time', e.target.value)} placeholder="00:00 – 01:00" style={{ width:130 }} />
+                    </div>
+                    <div style={{ flex:'1 1 120px' }}>
+                      <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:'#a89ec0', marginBottom:3, letterSpacing:'0.1em' }}>NOMBRE</div>
+                      <input type="text" value={dj.name} onChange={e => upLineup(i, 'name', e.target.value)} placeholder="DJ NAME" style={{ width:'100%', fontFamily:"'Bebas Neue',sans-serif", fontSize:18, letterSpacing:'0.06em' }} />
+                    </div>
+                    <div style={{ flex:'0 0 auto' }}>
+                      <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:'#a89ec0', marginBottom:3, letterSpacing:'0.1em' }}>ROL</div>
+                      <select value={dj.role} onChange={e => upLineup(i, 'role', e.target.value)} style={{ background:'rgba(255,255,255,0.8)', border:'1px solid rgba(200,180,240,0.4)', color:'#1e1535', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, padding:'5px 8px', borderRadius:6, outline:'none' }}>
+                        {ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+                      </select>
+                    </div>
+                    <div style={{ flex:'0 0 auto' }}>
+                      <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:'#a89ec0', marginBottom:3, letterSpacing:'0.1em' }}>FEE $ARS</div>
+                      <input type="number" value={dj.fee} min={0} step={5000} onChange={e => upLineup(i, 'fee', Number(e.target.value))} style={{ width:120, color: dj.fee > 0 ? '#ea7c3a' : '#a89ec0', fontWeight:600 }} />
+                    </div>
+                    <button onClick={() => removeSlot(i)} style={{ background:'none', border:'1px solid rgba(224,85,133,0.3)', color:'#e05585', fontFamily:"'IBM Plex Mono',monospace", fontSize:10, padding:'5px 10px', borderRadius:6, cursor:'pointer', marginTop:14, letterSpacing:'0.1em' }}>✕</button>
+                  </div>
+                </div>
+              ))}
+              <button onClick={addSlot} style={{ width:'100%', background:'rgba(255,255,255,0.5)', border:'1px dashed rgba(200,180,240,0.5)', color:'#a89ec0', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, padding:'12px', borderRadius:8, cursor:'pointer', letterSpacing:'0.12em', marginTop:4 }}>
+                + AGREGAR SLOT
+              </button>
+            </div>
+
+            <div className="section">
+              <div className="section-title">resumen de fees</div>
+              <div className="grid3">
+                {lineup.filter(dj => dj.fee > 0).map((dj, i) => (
+                  <div key={i} className="stat">
+                    <div className="stat-label">{dj.name || '—'}</div>
+                    <div className="stat-value" style={{ fontSize:14 }}>{fmt(dj.fee)}</div>
+                  </div>
+                ))}
+                <div className="stat highlight span2">
+                  <div className="stat-label">TOTAL FEES DJS</div>
+                  <div className="stat-value">{fmt(totalDjFee)}</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="section">
+              <div className="section-title">rider técnico</div>
+              <div className="card">
+                <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, color:'#a89ec0', lineHeight:2 }}>
+                  PA: 4× dB Technologies · 2× subs QSC · 2× retornos QSC<br />
+                  DJ Booth: CDJs Nexus 2 + DJM 900 NXS2<br />
+                  Vinilos: 2× Reloop 8000 MK2 + Model 1<br />
+                  Ilum. completa · Láser · Humo · Pantalla · Proyector (alquiler externo)
+                </div>
+              </div>
+            </div>
+          </>}
+
+          {/* ── CREW ── */}
+          {tab === 2 && <>
+            <div className="section">
+              <div className="section-title">team the omen records</div>
+              {crew.map((c, i) => (
+                <div key={i} className="crew-row">
+                  <span className="crew-name">{c.name}</span>
+                  <label style={{ display:'flex', alignItems:'center', gap:6, cursor:'pointer' }}>
+                    <input type="checkbox" checked={c.paid} onChange={e => upCrew(i, 'paid', e.target.checked)} />
+                    <span className={`crew-badge ${c.paid ? 'badge-paid' : 'badge-unpaid'}`}>{c.paid ? 'pagó' : 'pendiente'}</span>
+                  </label>
+                  <label style={{ display:'flex', alignItems:'center', gap:6, cursor:'pointer' }}>
+                    <input type="checkbox" checked={c.access} onChange={e => upCrew(i, 'access', e.target.checked)} />
+                    <span className={`crew-badge ${c.access ? 'badge-access' : 'badge-noaccess'}`}>{c.access ? 'acceso' : 'sin acceso'}</span>
+                  </label>
+                  <input type="number" value={c.amount} step={1000} min={0} onChange={e => upCrew(i, 'amount', Number(e.target.value))} style={{ width:100 }} placeholder="aporte $" />
+                </div>
+              ))}
+            </div>
+            <div className="section">
+              <div className="section-title">resumen</div>
+              <div className="grid3">
+                <div className="stat"><div className="stat-label">TOTAL CREW</div><div className="stat-value">{crew.length}</div></div>
+                <div className="stat positive"><div className="stat-label">CON ACCESO</div><div className="stat-value">{crew.filter(c => c.access).length}</div></div>
+                <div className="stat positive"><div className="stat-label">TOTAL APORTADO</div><div className="stat-value">{fmt(totalCrewContrib)}</div></div>
+              </div>
+            </div>
+          </>}
+
+          {/* ── PRODUCCIÓN ── */}
+          {tab === 3 && <>
+            <div className="section">
+              <div className="section-title">cronograma de producción</div>
+              <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, color:'#a89ec0', marginBottom:12, letterSpacing:'0.06em' }}>
+                Clic en celdas para marcar días activos · <span style={{ color:'#a78bfa' }}>■</span> = semana del evento (S0)
+              </div>
+              <div className="timeline-scroll">
+                <div style={{ minWidth:640 }}>
+                  <div style={{ display:'flex', marginLeft:164, marginBottom:4 }}>
+                    {WEEKS.map((w, wi) => (
+                      <div key={wi} style={{ flex:1, textAlign:'center' }}>
+                        <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:8, color: wi === 4 ? '#a78bfa' : 'rgba(200,180,240,0.5)', letterSpacing:'0.1em', textTransform:'uppercase', marginBottom:2 }}>{w}</div>
+                        <div style={{ display:'flex', gap:1, justifyContent:'center' }}>
+                          {DAYS.map(d => <div key={d} style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:7, color:'rgba(200,180,240,0.5)', width:16, textAlign:'center' }}>{d}</div>)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {TASKS.map((task, ti) => (
+                    <div key={ti} style={{ display:'flex', alignItems:'center', marginBottom:3 }}>
+                      <div style={{ fontSize:11, color:'#6b5e88', minWidth:164, padding:'6px 0', fontFamily:"'IBM Plex Mono',monospace", letterSpacing:'0.02em' }}>{task}</div>
+                      <div style={{ display:'flex', flex:1 }}>
+                        {WEEKS.map((_, wi) => (
+                          <div key={wi} style={{ flex:1, display:'flex', gap:1, justifyContent:'center', marginRight:2 }}>
+                            {DAYS.map((_, di) => {
+                              const k = `${ti}-${wi}-${di}`
+                              return <div key={di} className={`day-cell ${cells[k] ? 'on' : ''} ${wi === 4 && di === 5 ? 'ev' : ''}`} onClick={() => toggleCell(k)} title={`${WFULL[wi]} · ${DAYS[di]}`} />
+                            })}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </>}
+
+          <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:'rgba(168,158,192,0.4)', letterSpacing:'0.1em', textAlign:'center', marginTop:40, lineHeight:2 }}>
+            OPCIÓN 1 · 100% BARRA→MELT · 100% PUERTA+GUARDARROPA→PRODUCTORA<br />
+            MELT UNDERGROUND · LAPRIDA Y AV. SANTA FE · RECOLETA · CAP. 150
+          </div>
+
+        </>}
       </div>
     </>
   )
