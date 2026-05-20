@@ -380,6 +380,11 @@ export default function App() {
   const [state, setState]             = useState(DEFAULT_STATE)
   const [syncStatus, setSyncStatus]   = useState('synced')
   const [loaded, setLoaded]           = useState(false)
+  // loadedEventId is set only after onSnapshot confirms the right event's
+  // data is in `state`. The save effect uses it to guard against the first
+  // render after an event switch, where currentEventId is already the new
+  // event but `state` still holds the previous event's data.
+  const [loadedEventId, setLoadedEventId] = useState(null)
   const saveTimer      = useRef(null)
   const isRemoteUpdate = useRef(false)
   const eventVersion   = useRef(0)
@@ -420,12 +425,16 @@ export default function App() {
 
     // Cancel any pending save from the previous event immediately
     clearTimeout(saveTimer.current)
-    // Bump version so any timer that already fired can self-abort
+    // Bump version so any in-flight timer callback can self-abort
     eventVersion.current += 1
     const myVersion = eventVersion.current
+    const myEventId = currentEventId
 
+    // Reset — loadedEventId stays null until onSnapshot confirms correct data
     setLoaded(false)
+    setLoadedEventId(null)
     setState(DEFAULT_STATE)
+
     const ref = doc(db, 'events', currentEventId)
     const unsub = onSnapshot(
       ref,
@@ -436,6 +445,8 @@ export default function App() {
           isRemoteUpdate.current = true
           setState(prev => ({ ...DEFAULT_STATE, ...snap.data() }))
         }
+        // Only now is `state` guaranteed to belong to this event
+        setLoadedEventId(myEventId)
         setLoaded(true)
         setSyncStatus('synced')
       },
@@ -451,12 +462,14 @@ export default function App() {
 
   // ── Debounced save ────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!loaded || !currentEventId) return
+    // loadedEventId === currentEventId guarantees that `state` actually
+    // belongs to this event. Without this check, the effect fires on the very
+    // first render after switching events — `currentEventId` is already the
+    // new event but `state` still holds the PREVIOUS event's data, which
+    // would overwrite the new event's Firestore document.
+    if (!loaded || !currentEventId || loadedEventId !== currentEventId) return
     if (isRemoteUpdate.current) { isRemoteUpdate.current = false; return }
 
-    // Snapshot the version and event ID *before* the async delay so that
-    // if the user switches events before the 800 ms are up, the timer
-    // detects the mismatch and exits without touching Firestore.
     const savedVersion = eventVersion.current
     const savedEventId = currentEventId
     const savedState   = state
@@ -473,7 +486,7 @@ export default function App() {
         if (eventVersion.current === savedVersion) setSyncStatus('error')
       }
     }, 800)
-  }, [state, loaded, currentEventId])
+  }, [state, loaded, currentEventId, loadedEventId])
 
   // ── Create new event ──────────────────────────────────────────────────────────
   const createEvent = async () => {
