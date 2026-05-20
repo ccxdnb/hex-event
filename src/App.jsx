@@ -346,14 +346,6 @@ const fmt = (n) => '$' + Math.round(n).toLocaleString('es-AR')
 const ROLES = ['warmup', 'main', 'headliner', 'close']
 const ROLE_LABELS = { warmup: 'WARMUP', main: 'MAIN', headliner: 'HEADLINER', close: 'CLOSE' }
 
-const TASKS = [
-  'Armado Propuesta', 'Planificación Gráfica', 'KeyCards', 'Publicaciones IG',
-  'Llamado DJs', 'Reserva equipos', 'Armado Escenografía', 'Evento / Rodaje',
-  'Edición de Post', 'Planif. Publicación YT',
-]
-const WEEKS = ['S−4', 'S−3', 'S−2', 'S−1', 'S0', 'S+1', 'S+2']
-const WFULL = ['SEMANA −4', 'SEMANA −3', 'SEMANA −2', 'SEMANA −1', 'SEMANA 0', 'SEMANA +1', 'SEMANA +2']
-const DAYS = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
 
 // ─── Default state ────────────────────────────────────────────────────────────
 
@@ -373,6 +365,7 @@ const DEFAULT_STATE = {
     { name: 'ACE',     paid: false, access: true, amount: 0 },
     { name: 'NOISED',  paid: false, access: true, amount: 0 },
     { name: 'JOTAEME', paid: false, access: true, amount: 0 },
+    { name: 'ZAI',     paid: false, access: true, amount: 0 },
   ],
   tiers: [
     { name: 'EARLY BIRD', desc: 'primeras 20 entradas',    qty: 20,  price: 5000  },
@@ -381,19 +374,13 @@ const DEFAULT_STATE = {
   ],
   publi: 0,
   extras: 0,
+  optionalCosts: [],
   inclAudio: false,
   inclVideo: false,
   inclPlatform: true,
   att: 80,
   wPrice: 2000,
   wPct: 50,
-  cells: (() => {
-    const o = {}
-    TASKS.forEach((_, ti) => WEEKS.forEach((_, wi) => DAYS.forEach((_, di) => {
-      o[`${ti}-${wi}-${di}`] = false
-    })))
-    return o
-  })(),
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -426,7 +413,8 @@ const computeFinancials = (s) => {
   const totalDjFee       = lineup.reduce((a, dj) => a + (Number(dj.fee) || 0), 0)
   const totalCrewContrib = crew.reduce((a, c) => a + (Number(c.amount) || 0), 0)
   const optCosts         = (s.inclAudio ? 50000 : 0) + (s.inclVideo ? 70000 : 0)
-  const totalFixed       = 900000 + totalDjFee + publi + extras + optCosts
+  const customCostTotal  = (s.optionalCosts || []).reduce((a, c) => a + (Number(c.amount) || 0), 0) + publi + extras
+  const totalFixed       = 900000 + totalDjFee + customCostTotal + optCosts
   const netCost          = totalFixed - totalCrewContrib
 
   let rem = att
@@ -482,7 +470,7 @@ export default function App() {
   const isRemoteUpdate = useRef(false)
   const eventVersion   = useRef(0)
 
-  const { name, date, lineup, crew, tiers, publi, extras, inclAudio, inclVideo, inclPlatform, att, wPrice, wPct, cells } = state
+  const { name, date, lineup, crew, tiers, publi, extras, optionalCosts, inclAudio, inclVideo, inclPlatform, att, wPrice, wPct } = state
 
   // ── Persist sidebar state ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -658,13 +646,12 @@ export default function App() {
     const c = [...crew]; c[i] = { ...c[i], [f]: v }; set('crew', c)
   }
 
-  const toggleCell = (k) => set('cells', { ...cells, [k]: !cells[k] })
-
   // ── Derived financials ────────────────────────────────────────────────────────
   const totalDjFee       = lineup.reduce((a, dj) => a + (Number(dj.fee) || 0), 0)
   const totalCrewContrib = crew.reduce((a, c)    => a + (Number(c.amount) || 0), 0)
   const optCosts         = (inclAudio ? 50000 : 0) + (inclVideo ? 70000 : 0)
-  const totalFixed       = 900000 + totalDjFee + publi + extras + optCosts
+  const customCostTotal  = (optionalCosts || []).reduce((a, c) => a + (Number(c.amount) || 0), 0) + (publi || 0) + (extras || 0)
+  const totalFixed       = 900000 + totalDjFee + customCostTotal + optCosts
   const netCost          = totalFixed - totalCrewContrib
 
   let rem = att
@@ -677,7 +664,7 @@ export default function App() {
   const balance   = totalRev - netCost
   const cov       = Math.min(100, Math.round(totalRev / Math.max(netCost, 1) * 100))
 
-  const TABS = ['FINANZAS', 'LINEUP', 'CREW', 'PRODUCCIÓN']
+  const TABS = ['FINANZAS', 'LINEUP', 'CREW']
 
   if (!loaded && !!currentEventId) return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', fontFamily:'IBM Plex Mono, monospace', fontSize:12, color:'#a89ec0', letterSpacing:'0.1em' }}>
@@ -1066,19 +1053,46 @@ export default function App() {
               <div className="section">
                 <div className="section-title">costos opcionales</div>
                 <div className="card" style={{ padding:'4px 0' }}>
+                  {/* Dynamic user-defined costs */}
+                  {(optionalCosts || []).map((oc, i) => (
+                    <div className="toggle-row" key={oc.id ?? i} style={{ gap: 8 }}>
+                      <input
+                        type="text"
+                        placeholder="descripción del costo"
+                        value={oc.label}
+                        onChange={e => { const c = [...(optionalCosts||[])]; c[i] = { ...c[i], label: e.target.value }; set('optionalCosts', c) }}
+                        style={{ flex: 1, width: 'auto', minWidth: 0 }}
+                      />
+                      <input
+                        type="number"
+                        value={oc.amount}
+                        step={5000}
+                        min={0}
+                        onChange={e => { const c = [...(optionalCosts||[])]; c[i] = { ...c[i], amount: Number(e.target.value) }; set('optionalCosts', c) }}
+                        style={{ width: 130 }}
+                      />
+                      <button
+                        onClick={() => set('optionalCosts', (optionalCosts||[]).filter((_, j) => j !== i))}
+                        style={{ background:'none', border:'none', cursor:'pointer', color:'#e05585', fontSize:16, padding:'0 4px', lineHeight:1, flexShrink:0 }}
+                      >✕</button>
+                    </div>
+                  ))}
+                  {/* Add cost button */}
+                  <div style={{ padding:'8px 14px' }}>
+                    <button
+                      onClick={() => set('optionalCosts', [...(optionalCosts||[]), { id: Date.now(), label: '', amount: 0 }])}
+                      style={{ background:'none', border:'1px dashed rgba(167,139,250,0.35)', color:'#a89ec0', fontFamily:"'IBM Plex Mono',monospace", fontSize:10, letterSpacing:'0.1em', padding:'7px 14px', borderRadius:7, cursor:'pointer', width:'100%' }}
+                    >+ AGREGAR COSTO</button>
+                  </div>
+                  {/* Fixed toggles */}
                   {[
-                    { l:'Publicidad / Flyers',            s:'editable',            edit:true,  val:publi,        set:(v) => set('publi', v)                    },
-                    { l:'Otros gastos',                   s:'editable',            edit:true,  val:extras,       set:(v) => set('extras', v)                   },
-                    { l:'Grabación audio (noche compl.)', s:fmt(50000),            edit:false, checked:inclAudio,    toggle:() => set('inclAudio', !inclAudio)       },
-                    { l:'Grabación video (GoPro 360)',    s:fmt(70000),            edit:false, checked:inclVideo,    toggle:() => set('inclVideo', !inclVideo)       },
-                    { l:'Fee plataforma ticketing',       s:'~10% sobre entradas', edit:false, checked:inclPlatform, toggle:() => set('inclPlatform', !inclPlatform) },
+                    { l:'Grabación audio (noche compl.)', s:fmt(50000),            checked:inclAudio,    toggle:() => set('inclAudio', !inclAudio)       },
+                    { l:'Grabación video (GoPro 360)',    s:fmt(70000),            checked:inclVideo,    toggle:() => set('inclVideo', !inclVideo)       },
+                    { l:'Fee plataforma ticketing',       s:'~10% sobre entradas', checked:inclPlatform, toggle:() => set('inclPlatform', !inclPlatform) },
                   ].map((row, i) => (
                     <div className="toggle-row" key={i}>
                       <div className="toggle-label">{row.l}<span className="toggle-sub">{row.s}</span></div>
-                      {row.edit
-                        ? <input type="number" value={row.val} onChange={e => row.set(Number(e.target.value))} step={5000} min={0} />
-                        : <input type="checkbox" checked={row.checked} onChange={row.toggle} />
-                      }
+                      <input type="checkbox" checked={row.checked} onChange={row.toggle} />
                     </div>
                   ))}
                 </div>
@@ -1087,9 +1101,9 @@ export default function App() {
               <div className="section">
                 <div className="section-title">asistencia estimada</div>
                 <div className="input-row">
-                  <span className="input-label">personas (máx. 150)</span>
-                  <input type="range" min={20} max={150} step={5} value={att} onChange={e => set('att', Number(e.target.value))} />
-                  <span className="range-val">{att}</span>
+                  <span className="input-label">personas</span>
+                  <input type="number" min={1} max={150} value={att} onChange={e => set('att', Math.min(150, Math.max(1, Number(e.target.value) || 1)))} style={{ width: 90 }} />
+                  <span className="range-val" style={{ color:'#a89ec0', fontSize:11, minWidth:'auto' }}>/ 150 máx.</span>
                 </div>
               </div>
 
@@ -1143,6 +1157,7 @@ export default function App() {
                   {[
                     ['VENUE (opción 1)', 900000],
                     ['DJS', totalDjFee],
+                    ...(optionalCosts || []).filter(c => c.amount > 0).map(c => [c.label || 'COSTO EXTRA', c.amount]),
                     ...(publi  > 0 ? [['PUBLICIDAD', publi]]       : []),
                     ...(extras > 0 ? [['OTROS', extras]]           : []),
                     ...(inclAudio   ? [['GRABACIÓN AUDIO', 50000]] : []),
@@ -1272,44 +1287,6 @@ export default function App() {
               </div>
             </>}
 
-            {/* ── PRODUCCIÓN ── */}
-            {tab === 3 && <>
-              <div className="section">
-                <div className="section-title">cronograma de producción</div>
-                <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, color:'#a89ec0', marginBottom:12, letterSpacing:'0.06em' }}>
-                  Clic en celdas para marcar días activos · <span style={{ color:'#a78bfa' }}>■</span> = semana del evento (S0)
-                </div>
-                <div className="timeline-scroll">
-                  <div style={{ minWidth:640 }}>
-                    <div style={{ display:'flex', marginLeft:164, marginBottom:4 }}>
-                      {WEEKS.map((w, wi) => (
-                        <div key={wi} style={{ flex:1, textAlign:'center' }}>
-                          <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:8, color: wi === 4 ? '#a78bfa' : 'rgba(200,180,240,0.5)', letterSpacing:'0.1em', textTransform:'uppercase', marginBottom:2 }}>{w}</div>
-                          <div style={{ display:'flex', gap:1, justifyContent:'center' }}>
-                            {DAYS.map(d => <div key={d} style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:7, color:'rgba(200,180,240,0.5)', width:16, textAlign:'center' }}>{d}</div>)}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    {TASKS.map((task, ti) => (
-                      <div key={ti} style={{ display:'flex', alignItems:'center', marginBottom:3 }}>
-                        <div style={{ fontSize:11, color:'#6b5e88', minWidth:164, padding:'6px 0', fontFamily:"'IBM Plex Mono',monospace", letterSpacing:'0.02em' }}>{task}</div>
-                        <div style={{ display:'flex', flex:1 }}>
-                          {WEEKS.map((_, wi) => (
-                            <div key={wi} style={{ flex:1, display:'flex', gap:1, justifyContent:'center', marginRight:2 }}>
-                              {DAYS.map((_, di) => {
-                                const k = `${ti}-${wi}-${di}`
-                                return <div key={di} className={`day-cell ${cells[k] ? 'on' : ''} ${wi === 4 && di === 5 ? 'ev' : ''}`} onClick={() => isAdmin && toggleCell(k)} title={`${WFULL[wi]} · ${DAYS[di]}`} />
-                              })}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </>}
 
             </fieldset>
 
