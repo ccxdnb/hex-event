@@ -255,7 +255,7 @@ export default function App() {
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'events'), (snapshot) => {
       const list = snapshot.docs
-        .map(d => ({ id: d.id, name: d.data().name || d.id, date: d.data().date || '' }))
+        .map(d => ({ id: d.id, name: d.data().name || '', date: d.data().date || '' }))
         .sort((a, b) => {
           if (a.date && b.date) return b.date.localeCompare(a.date)
           if (a.date) return -1
@@ -410,10 +410,10 @@ export default function App() {
         <div className="event-bar">
           <button className="event-current-btn" onClick={() => setShowPanel(p => !p)}>
             <span className="event-current-name">
-              {currentEvent?.name || name || (currentEventId ? currentEventId : 'SELECCIONÁ UN EVENTO')}
+              {name || currentEvent?.name || (currentEventId ? 'SIN NOMBRE' : 'SELECCIONÁ UN EVENTO')}
             </span>
-            {(currentEvent?.date || date) && (
-              <span className="event-current-date">{formatDate(currentEvent?.date || date)}</span>
+            {(date || currentEvent?.date) && (
+              <span className="event-current-date">{formatDate(date || currentEvent?.date)}</span>
             )}
             <span className="event-chevron">{showPanel ? '▲' : '▼'}</span>
           </button>
@@ -423,6 +423,27 @@ export default function App() {
         {/* ── Event panel ── */}
         {showPanel && (
           <div className="event-panel">
+
+            {/* Editable fields for the active event */}
+            {currentEventId && loaded && (
+              <div className="event-form" style={{ borderTop:'none', borderBottom:'1px solid rgba(200,180,240,0.2)', paddingBottom:12 }}>
+                <div className="event-form-label">EDITAR EVENTO ACTIVO</div>
+                <div className="event-form-row">
+                  <input
+                    type="text"
+                    placeholder="NOMBRE DEL EVENTO"
+                    value={name}
+                    onChange={e => set('name', e.target.value.toUpperCase())}
+                  />
+                  <input
+                    type="date"
+                    value={date}
+                    onChange={e => set('date', e.target.value)}
+                  />
+                </div>
+              </div>
+            )}
+
             <div className="event-list-inner">
               {events.length === 0
                 ? <div className="event-empty">SIN EVENTOS · CREÁ EL PRIMERO</div>
@@ -433,7 +454,7 @@ export default function App() {
                       onClick={() => { setCurrentEventId(ev.id); setShowPanel(false); setTab(0) }}
                     >
                       <div className="event-row-dot" />
-                      <span className="event-row-name">{ev.name}</span>
+                      <span className="event-row-name">{ev.name || 'SIN NOMBRE'}</span>
                       {ev.date && <span className="event-row-date">{formatDate(ev.date)}</span>}
                       {ev.id === currentEventId && <span className="event-row-badge">ACTIVO</span>}
                     </div>
