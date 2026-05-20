@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { collection, doc, onSnapshot, setDoc, addDoc, serverTimestamp } from 'firebase/firestore'
+import { collection, doc, onSnapshot, setDoc, addDoc, deleteDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from './firebase'
 
 // ─── Fonts & CSS ─────────────────────────────────────────────────────────────
@@ -134,6 +134,17 @@ body {
   color-scheme: light; cursor: pointer; width: 130px;
   display: block;
 }
+.sidebar-item-row { position: relative; }
+.sidebar-item-actions { display:flex; gap:2px; align-items:center; opacity:0; transition:opacity 0.15s; flex-shrink:0; margin-left:auto; }
+.sidebar-item:hover .sidebar-item-actions { opacity:1; }
+.sidebar-action-btn { width:22px; height:22px; display:flex; align-items:center; justify-content:center; background:none; border:none; cursor:pointer; border-radius:5px; color:#c4b8e0; transition:all 0.15s; padding:0; flex-shrink:0; }
+.sidebar-action-btn:hover { background:rgba(167,139,250,0.12); color:#8b72e8; }
+.sidebar-action-btn.del:hover { background:rgba(224,85,133,0.1); color:#e05585; }
+.sidebar-delete-confirm { display:flex; gap:4px; align-items:center; flex-shrink:0; margin-left:auto; }
+.sidebar-confirm-btn { font-family:'IBM Plex Mono',monospace; font-size:8px; letter-spacing:0.08em; padding:3px 8px; border-radius:5px; cursor:pointer; border:1px solid; transition:background 0.15s; }
+.sidebar-confirm-yes { background:rgba(224,85,133,0.08); color:#e05585; border-color:rgba(224,85,133,0.25); }
+.sidebar-confirm-yes:hover { background:rgba(224,85,133,0.18); }
+.sidebar-confirm-no  { background:rgba(200,180,240,0.08); color:#a89ec0; border-color:rgba(200,180,240,0.25); }
 
 /* ── Overlay (mobile) ── */
 .sidebar-overlay {
@@ -360,6 +371,9 @@ export default function App() {
   const [newName, setNewName]         = useState('')
   const [newDate, setNewDate]         = useState('')
   const [creating, setCreating]       = useState(false)
+  const [editingId, setEditingId]     = useState(null)
+  const [editingValue, setEditingValue] = useState('')
+  const [deletingId, setDeletingId]   = useState(null)
 
   // ── Current event data ────────────────────────────────────────────────────────
   const [tab, setTab]                 = useState(0)
@@ -463,6 +477,27 @@ export default function App() {
     setCreating(false)
   }
 
+  // ── Rename any event directly in Firestore ────────────────────────────────────
+  const saveEventName = async (id, val) => {
+    const trimmed = val.trim().toUpperCase()
+    if (id === currentEventId) {
+      set('name', trimmed)
+    } else {
+      try { await setDoc(doc(db, 'events', id), { name: trimmed }, { merge: true }) } catch (e) { console.error(e) }
+    }
+    setEditingId(null)
+  }
+
+  // ── Delete event ──────────────────────────────────────────────────────────────
+  const deleteEvent = async (id) => {
+    try { await deleteDoc(doc(db, 'events', id)) } catch (e) { console.error(e) }
+    if (id === currentEventId) {
+      const next = events.find(e => e.id !== id)
+      setCurrentEventId(next?.id || null)
+    }
+    setDeletingId(null)
+  }
+
   // ── State updaters ────────────────────────────────────────────────────────────
   const set = (key, val) => setState(prev => ({ ...prev, [key]: val }))
 
@@ -558,15 +593,23 @@ export default function App() {
           {events.length === 0 ? (
             <div className="sidebar-empty">SIN EVENTOS<br />USÁ EL + PARA CREAR UNO</div>
           ) : events.map(ev => {
-            const isActive = ev.id === currentEventId
+            const isActive   = ev.id === currentEventId
+            const isEditing  = editingId === ev.id
+            const isDeleting = deletingId === ev.id
+
             return (
               <div
                 key={ev.id}
                 className={`sidebar-item ${isActive ? 'active' : ''}`}
-                onClick={() => { if (!isActive) { setCurrentEventId(ev.id); setTab(0) } }}
+                onClick={() => {
+                  if (isEditing || isDeleting) return
+                  if (!isActive) { setCurrentEventId(ev.id); setTab(0); setDeletingId(null); setEditingId(null) }
+                }}
               >
                 <div className="sidebar-item-row">
                   <div className="sidebar-dot" />
+
+                  {/* Name — editable for active via state, editable for others via direct Firestore */}
                   {isActive ? (
                     <input
                       className="sidebar-name-input"
@@ -575,18 +618,60 @@ export default function App() {
                       onChange={e => set('name', e.target.value.toUpperCase())}
                       onClick={e => e.stopPropagation()}
                     />
+                  ) : isEditing ? (
+                    <input
+                      className="sidebar-name-input"
+                      value={editingValue}
+                      autoFocus
+                      placeholder="NOMBRE DEL EVENTO"
+                      onChange={e => setEditingValue(e.target.value.toUpperCase())}
+                      onBlur={() => saveEventName(ev.id, editingValue)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter')  saveEventName(ev.id, editingValue)
+                        if (e.key === 'Escape') setEditingId(null)
+                      }}
+                      onClick={e => e.stopPropagation()}
+                    />
                   ) : (
                     <span className="sidebar-item-name">{ev.name || 'SIN NOMBRE'}</span>
                   )}
+
+                  {/* Actions (edit + delete) or delete confirmation */}
+                  {isDeleting ? (
+                    <div className="sidebar-delete-confirm" onClick={e => e.stopPropagation()}>
+                      <button className="sidebar-confirm-btn sidebar-confirm-yes" onClick={() => deleteEvent(ev.id)}>SÍ</button>
+                      <button className="sidebar-confirm-btn sidebar-confirm-no"  onClick={() => setDeletingId(null)}>NO</button>
+                    </div>
+                  ) : (
+                    <div className="sidebar-item-actions" onClick={e => e.stopPropagation()}>
+                      {/* Rename */}
+                      {!isActive && (
+                        <button className="sidebar-action-btn" title="Renombrar"
+                          onClick={() => { setEditingId(ev.id); setEditingValue(ev.name || '') }}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                            <path d="m18.5 2.5 2.5 2.5-10 10-3.5.5.5-3.5z"/>
+                          </svg>
+                        </button>
+                      )}
+                      {/* Delete */}
+                      <button className="sidebar-action-btn del" title="Eliminar"
+                        onClick={() => { setDeletingId(ev.id); setEditingId(null) }}>
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                          <polyline points="3 6 5 6 21 6"/>
+                          <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                          <path d="M10 11v6M14 11v6"/>
+                          <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                        </svg>
+                      </button>
+                    </div>
+                  )}
                 </div>
+
+                {/* Date row */}
                 {isActive ? (
-                  <input
-                    type="date"
-                    className="sidebar-date-input"
-                    value={date}
-                    onChange={e => set('date', e.target.value)}
-                    onClick={e => e.stopPropagation()}
-                  />
+                  <input type="date" className="sidebar-date-input" value={date}
+                    onChange={e => set('date', e.target.value)} onClick={e => e.stopPropagation()} />
                 ) : (
                   ev.date && <div className="sidebar-item-date">{formatDate(ev.date)}</div>
                 )}
