@@ -382,6 +382,7 @@ export default function App() {
   const [loaded, setLoaded]           = useState(false)
   const saveTimer      = useRef(null)
   const isRemoteUpdate = useRef(false)
+  const eventVersion   = useRef(0)
 
   const { name, date, lineup, crew, tiers, publi, extras, inclAudio, inclVideo, inclPlatform, att, wPrice, wPct, cells } = state
 
@@ -416,12 +417,21 @@ export default function App() {
   // ── Subscribe to current event data ──────────────────────────────────────────
   useEffect(() => {
     if (!currentEventId) return
+
+    // Cancel any pending save from the previous event immediately
+    clearTimeout(saveTimer.current)
+    // Bump version so any timer that already fired can self-abort
+    eventVersion.current += 1
+    const myVersion = eventVersion.current
+
     setLoaded(false)
     setState(DEFAULT_STATE)
     const ref = doc(db, 'events', currentEventId)
     const unsub = onSnapshot(
       ref,
       (snap) => {
+        // Ignore callbacks that arrive after we've already switched away
+        if (eventVersion.current !== myVersion) return
         if (snap.exists()) {
           isRemoteUpdate.current = true
           setState(prev => ({ ...DEFAULT_STATE, ...snap.data() }))
@@ -430,6 +440,7 @@ export default function App() {
         setSyncStatus('synced')
       },
       (err) => {
+        if (eventVersion.current !== myVersion) return
         console.error('Firestore error:', err)
         setSyncStatus('error')
         setLoaded(true)
@@ -442,15 +453,24 @@ export default function App() {
   useEffect(() => {
     if (!loaded || !currentEventId) return
     if (isRemoteUpdate.current) { isRemoteUpdate.current = false; return }
+
+    // Snapshot the version and event ID *before* the async delay so that
+    // if the user switches events before the 800 ms are up, the timer
+    // detects the mismatch and exits without touching Firestore.
+    const savedVersion = eventVersion.current
+    const savedEventId = currentEventId
+    const savedState   = state
+
     setSyncStatus('saving')
     clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(async () => {
+      if (eventVersion.current !== savedVersion) return   // switched — abort
       try {
-        await setDoc(doc(db, 'events', currentEventId), state, { merge: true })
-        setSyncStatus('synced')
+        await setDoc(doc(db, 'events', savedEventId), savedState, { merge: true })
+        if (eventVersion.current === savedVersion) setSyncStatus('synced')
       } catch (e) {
         console.error('Save error:', e)
-        setSyncStatus('error')
+        if (eventVersion.current === savedVersion) setSyncStatus('error')
       }
     }, 800)
   }, [state, loaded, currentEventId])
