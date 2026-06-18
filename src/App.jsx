@@ -362,12 +362,12 @@ const DEFAULT_STATE = {
   name: '',
   date: '',
   lineup: [
-    { time: '00:00 – 01:00', name: 'RIXA',        fee: 0,      role: 'warmup'    },
-    { time: '01:00 – 02:00', name: 'VECTRIL',     fee: 0,      role: 'main'      },
-    { time: '02:00 – 03:00', name: 'GOLONDRINA',  fee: 0,      role: 'main'      },
-    { time: '03:00 – 04:00', name: 'OMEN LEAGUE', fee: 150000, role: 'headliner' },
-    { time: '04:00 – 05:00', name: 'OMEN LEAGUE', fee: 0,      role: 'close'     },
-    { time: '05:00 – 06:00', name: 'OMEN LEAGUE', fee: 0,      role: 'close'     },
+    { time: '00:00 – 01:00', name: 'RIXA',        fee: 0,      role: 'warmup',    paid: false },
+    { time: '01:00 – 02:00', name: 'VECTRIL',     fee: 0,      role: 'main',      paid: false },
+    { time: '02:00 – 03:00', name: 'GOLONDRINA',  fee: 0,      role: 'main',      paid: false },
+    { time: '03:00 – 04:00', name: 'OMEN LEAGUE', fee: 150000, role: 'headliner', paid: false },
+    { time: '04:00 – 05:00', name: 'OMEN LEAGUE', fee: 0,      role: 'close',     paid: false },
+    { time: '05:00 – 06:00', name: 'OMEN LEAGUE', fee: 0,      role: 'close',     paid: false },
   ],
   crew: [
     { name: 'CCX',     paid: false, access: true, amount: 0 },
@@ -383,14 +383,21 @@ const DEFAULT_STATE = {
     { name: 'PUERTA',     desc: 'en el evento',            qty: 90, price: 11000, sold: 20 },
   ],
   aportes: [],
+  comps: 0,
   publi: 0,
   extras: 0,
   optionalCosts: [],
   inclAudio: false,
   inclVideo: false,
   inclPlatform: true,
-  wPrice: 2000,
-  wPeople: 40,
+  venueCost: 900000,
+  venueDeposit: 0,
+  venuePaid: false,
+  usdRate: 0,
+  wardrobe: [
+    { label: 'antes de las 02', people: 25, price: 2000 },
+    { label: 'después de las 02', people: 15, price: 3000 },
+  ],
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -425,27 +432,57 @@ const deriveTickets = (s) => {
   return { sold, att }
 }
 
-// Personas que usan guardarropa: valor directo controlable. Para eventos viejos
-// (sin `wPeople`) se deriva del porcentaje `wPct` guardado sobre la asistencia.
+// Guardarropa por tandas (el precio varía según el horario de la noche). Para
+// eventos viejos (con wPeople/wPrice o wPct) se arma una tanda única equivalente.
 const deriveWardrobe = (s, att) => {
-  if (s.wPeople !== undefined && s.wPeople !== null && s.wPeople !== '') {
-    return Math.max(0, Number(s.wPeople) || 0)
+  if (Array.isArray(s.wardrobe) && s.wardrobe.length) {
+    return s.wardrobe.map(w => ({
+      label:  w.label || '',
+      people: Math.max(0, Number(w.people) || 0),
+      price:  Math.max(0, Number(w.price)  || 0),
+    }))
   }
-  return Math.round(att * (Number(s.wPct) || 50) / 100)
+  const people = (s.wPeople !== undefined && s.wPeople !== null && s.wPeople !== '')
+    ? Math.max(0, Number(s.wPeople) || 0)
+    : Math.round(att * (Number(s.wPct) || 50) / 100)
+  return [{ label: 'general', people, price: Math.max(0, Number(s.wPrice) || 2000) }]
+}
+
+// Reparto del balance entre el crew, proporcional a los aportes de cada uno
+// (aporte directo del integrante + sus aportes cargados en la lista).
+const computeLiquidacion = (s, balance) => {
+  const byMember = {}
+  for (const c of (s.crew || [])) {
+    const a = Number(c.amount) || 0
+    if (a && c.name) byMember[c.name] = (byMember[c.name] || 0) + a
+  }
+  for (const ap of (s.aportes || [])) {
+    const v = Number(ap.amount) || 0
+    if (v && ap.crew) byMember[ap.crew] = (byMember[ap.crew] || 0) + v
+  }
+  const total = Object.values(byMember).reduce((a, b) => a + b, 0)
+  const rows = Object.entries(byMember)
+    .map(([name, aporte]) => ({ name, aporte, pct: total ? aporte / total * 100 : 0, share: total ? balance * aporte / total : 0 }))
+    .sort((a, b) => b.aporte - a.aporte)
+  return { rows, total }
 }
 
 const computeFinancials = (s) => {
   if (!s) return null
-  const lineup  = s.lineup  || []
-  const crew    = s.crew    || []
-  const tiers   = s.tiers   || []
-  const aportes = s.aportes || []
-  const publi   = Number(s.publi)    || 0
-  const extras  = Number(s.extras)   || 0
-  const wPrice  = Number(s.wPrice)   || 2000
+  const lineup    = s.lineup  || []
+  const crew      = s.crew    || []
+  const tiers     = s.tiers   || []
+  const aportes   = s.aportes || []
+  const publi     = Number(s.publi)     || 0
+  const extras    = Number(s.extras)    || 0
+  const venueCost = Number(s.venueCost) || 900000
 
   const { sold, att } = deriveTickets(s)
-  const wPeople = deriveWardrobe(s, att)
+  const wardrobe = deriveWardrobe(s, att)
+  const wPeople  = wardrobe.reduce((a, w) => a + w.people, 0)
+  const wRev     = wardrobe.reduce((a, w) => a + w.people * w.price, 0)
+  const comps    = Math.max(0, Number(s.comps) || 0)
+  const totalPeople = att + comps
 
   const totalDjFee       = lineup.reduce((a, dj) => a + (Number(dj.fee) || 0), 0)
   const crewDirect       = crew.reduce((a, c) => a + (Number(c.amount) || 0), 0)
@@ -453,16 +490,20 @@ const computeFinancials = (s) => {
   const totalCrewContrib = crewDirect + totalAportes
   const optCosts         = (s.inclAudio ? 50000 : 0) + (s.inclVideo ? 70000 : 0)
   const customCostTotal  = (s.optionalCosts || []).reduce((a, c) => a + (Number(c.amount) || 0), 0) + publi + extras
-  const totalFixed       = 900000 + totalDjFee + customCostTotal + optCosts
+  const totalFixed       = venueCost + totalDjFee + customCostTotal + optCosts
   const netCost          = totalFixed - totalCrewContrib
 
   const revs  = tiers.map((t, i) => sold[i] * (Number(t.price) || 0))
   const tickRev  = revs.reduce((a, b) => a + b, 0)
   const platFee  = s.inclPlatform ? tickRev * 0.1 : 0
-  const wRev     = wPeople * wPrice
   const totalRev = tickRev + wRev - platFee
   const balance  = totalRev - netCost
-  return { att, netCost, tickRev, wRev, platFee, totalRev, balance, totalDjFee, totalCrewContrib, totalAportes }
+  const margin   = totalRev > 0 ? (balance / totalRev) * 100 : 0
+  const usdRate  = Number(s.usdRate) || 0
+
+  return { sold, revs, att, comps, totalPeople, wardrobe, wPeople, netCost, tickRev, wRev, platFee,
+           totalRev, balance, margin, totalDjFee, totalCrewContrib, totalAportes, optCosts, customCostTotal,
+           totalFixed, venueCost, usdRate }
 }
 
 // ─── App ──────────────────────────────────────────────────────────────────────
@@ -507,7 +548,7 @@ export default function App() {
   const isRemoteUpdate = useRef(false)
   const eventVersion   = useRef(0)
 
-  const { name, date, lineup, crew, tiers, aportes, publi, extras, optionalCosts, inclAudio, inclVideo, inclPlatform, wPrice } = state
+  const { name, date, lineup, crew, tiers, aportes, publi, extras, optionalCosts, inclAudio, inclVideo, inclPlatform, venuePaid, venueDeposit } = state
 
   // ── Persist sidebar state ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -706,25 +747,25 @@ export default function App() {
   }
   const removeAporte = i => set('aportes', aportesList.filter((_, idx) => idx !== i))
 
-  // ── Derived financials ────────────────────────────────────────────────────────
-  const { sold, att }    = deriveTickets(state)
-  const totalDjFee       = lineup.reduce((a, dj) => a + (Number(dj.fee) || 0), 0)
-  const crewDirect       = crew.reduce((a, c)    => a + (Number(c.amount) || 0), 0)
-  const totalAportes     = aportesList.reduce((a, c) => a + (Number(c.amount) || 0), 0)
-  const totalCrewContrib = crewDirect + totalAportes
-  const optCosts         = (inclAudio ? 50000 : 0) + (inclVideo ? 70000 : 0)
-  const customCostTotal  = (optionalCosts || []).reduce((a, c) => a + (Number(c.amount) || 0), 0) + (publi || 0) + (extras || 0)
-  const totalFixed       = 900000 + totalDjFee + customCostTotal + optCosts
-  const netCost          = totalFixed - totalCrewContrib
+  // ── Derived financials (fuente única: computeFinancials) ───────────────────────
+  const fin = computeFinancials(state) || {}
+  const {
+    sold = [], revs = [], att = 0, comps = 0, totalPeople = 0,
+    wardrobe = [], wPeople = 0, wRev = 0, tickRev = 0, platFee = 0, totalRev = 0,
+    netCost = 0, balance = 0, margin = 0, totalDjFee = 0, totalCrewContrib = 0,
+    totalAportes = 0, totalFixed = 0, venueCost = 0, usdRate = 0,
+  } = fin
+  const cov         = Math.min(100, Math.round(totalRev / Math.max(netCost, 1) * 100))
+  const liquidacion = computeLiquidacion(state, balance)
+  const toUsd       = (n) => usdRate > 0 ? 'U$D ' + Math.round(n / usdRate).toLocaleString('es-AR') : null
 
-  const revs  = tiers.map((t, i) => sold[i] * (Number(t.price) || 0))
-  const tickRev   = revs.reduce((a, b) => a + b, 0)
-  const platFee   = inclPlatform ? tickRev * 0.1 : 0
-  const wPeople   = deriveWardrobe(state, att)
-  const wRev      = wPeople * wPrice
-  const totalRev  = tickRev + wRev - platFee
-  const balance   = totalRev - netCost
-  const cov       = Math.min(100, Math.round(totalRev / Math.max(netCost, 1) * 100))
+  // Guardarropa por tandas (mismo patrón de migración que tandas de ticketing)
+  const upWardrobe = (i, f, v) => {
+    const w = wardrobe.map((row, idx) => idx === i ? { ...row, [f]: (f === 'label' ? v : Math.max(0, Number(v) || 0)) } : row)
+    set('wardrobe', w)
+  }
+  const addWardrobe    = () => set('wardrobe', [...wardrobe, { label: '', people: 0, price: 2000 }])
+  const removeWardrobe = i => set('wardrobe', wardrobe.filter((_, idx) => idx !== i))
 
   const TABS = ['FINANZAS', 'LINEUP', 'CREW']
 
@@ -972,6 +1013,9 @@ export default function App() {
             const totalCost = finances.reduce((a, { fin }) => a + (fin?.netCost   || 0), 0)
             const totalBal  = finances.reduce((a, { fin }) => a + (fin?.balance   || 0), 0)
             const avgAtt    = finances.length ? Math.round(finances.reduce((a, { fin }) => a + (fin?.att || 0), 0) / finances.length) : 0
+            const avgMargin = finances.length ? finances.reduce((a, { fin }) => a + (fin?.margin || 0), 0) / finances.length : 0
+            const usdFinances = finances.filter(({ fin }) => (fin?.usdRate || 0) > 0)
+            const totalBalUsd = usdFinances.reduce((a, { fin }) => a + (fin.balance / fin.usdRate), 0)
             const maxRev    = Math.max(...finances.map(({ fin }) => fin?.totalRev || 0), 1)
             const maxAtt    = Math.max(...finances.map(({ fin }) => fin?.att || 0), 1)
             const sorted    = [...finances].sort((a, b) => (b.ev.date || '').localeCompare(a.ev.date || ''))
@@ -1002,7 +1046,7 @@ export default function App() {
                     <div className="dash-kpi-value grad">{eventsWithData.length}</div>
                   </div>
                   <div className="dash-kpi">
-                    <div className="dash-kpi-label">INGRESOS PROYECTADOS</div>
+                    <div className="dash-kpi-label">RECAUDACIÓN TOTAL</div>
                     <div className="dash-kpi-value">{fmt(totalRev)}</div>
                   </div>
                   <div className="dash-kpi">
@@ -1012,6 +1056,10 @@ export default function App() {
                   <div className="dash-kpi">
                     <div className="dash-kpi-label">BALANCE NETO</div>
                     <div className={`dash-kpi-value ${totalBal >= 0 ? 'pos' : 'neg'}`}>{totalBal >= 0 ? '+' : ''}{fmt(totalBal)}</div>
+                  </div>
+                  <div className="dash-kpi">
+                    <div className="dash-kpi-label">MARGEN PROM.</div>
+                    <div className={`dash-kpi-value ${avgMargin >= 0 ? 'pos' : 'neg'}`}>{avgMargin >= 0 ? '+' : ''}{avgMargin.toFixed(1)}%</div>
                   </div>
                   <div className="dash-kpi">
                     <div className="dash-kpi-label">ASISTENCIA PROM.</div>
@@ -1032,9 +1080,14 @@ export default function App() {
                   <div>
                     <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, color:'#a89ec0', letterSpacing:'0.14em', textTransform:'uppercase', marginBottom:4 }}>NETO GENERADO · {eventsWithData.length} evento{eventsWithData.length === 1 ? '' : 's'}</div>
                     <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:44, lineHeight:1, letterSpacing:'0.02em', color: totalBal >= 0 ? '#2a9068' : '#e05585' }}>{totalBal >= 0 ? '+' : ''}{fmt(totalBal)}</div>
+                    {usdFinances.length > 0 && (
+                      <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:11, color:'#8b72e8', marginTop:4, letterSpacing:'0.04em' }}>
+                        ≈ U$D {Math.round(totalBalUsd).toLocaleString('es-AR')} <span style={{ color:'#a89ec0' }}>({usdFinances.length}/{eventsWithData.length} con cotización)</span>
+                      </div>
+                    )}
                   </div>
                   <div style={{ textAlign:'right', fontFamily:"'IBM Plex Mono',monospace", fontSize:10, color:'#a89ec0', letterSpacing:'0.06em', lineHeight:1.9 }}>
-                    ingresos {fmt(totalRev)}<br />− costos {fmt(totalCost)}<br />
+                    recaudación {fmt(totalRev)}<br />− costos {fmt(totalCost)}<br />
                     <span style={{ color:'#2a9068' }}>incl. aportes team {fmt(totalAportes)}</span>
                   </div>
                 </div>
@@ -1054,7 +1107,7 @@ export default function App() {
                     ))}
                   </div>
 
-                  <div className="section-title" style={{ marginBottom:12 }}>asistencia estimada</div>
+                  <div className="section-title" style={{ marginBottom:12 }}>asistencia</div>
                   <div style={{ marginBottom:24 }}>
                     {sorted.map(({ ev, fin }) => (
                       <div key={ev.id} className="dash-bar-row">
@@ -1096,7 +1149,7 @@ export default function App() {
                         <div className="dash-ev-metric-val">{fin?.att||0}</div>
                       </div>
                       <div className="dash-ev-metric">
-                        <div className="dash-ev-metric-lbl">INGRESOS</div>
+                        <div className="dash-ev-metric-lbl">RECAUDACIÓN</div>
                         <div className="dash-ev-metric-val">{fmt(fin?.totalRev||0)}</div>
                       </div>
                       <div className="dash-ev-metric">
@@ -1108,6 +1161,11 @@ export default function App() {
                         <div className={`dash-ev-metric-val ${(fin?.balance||0) >= 0 ? 'pos' : 'neg'}`}>
                           {(fin?.balance||0) >= 0 ? '+' : ''}{fmt(fin?.balance||0)}
                         </div>
+                        {(fin?.usdRate||0) > 0 && <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:8, color:'#8b72e8', marginTop:2 }}>U$D {Math.round((fin.balance)/fin.usdRate).toLocaleString('es-AR')}</div>}
+                      </div>
+                      <div className="dash-ev-metric">
+                        <div className="dash-ev-metric-lbl">MARGEN</div>
+                        <div className={`dash-ev-metric-val ${(fin?.margin||0) >= 0 ? 'pos' : 'neg'}`}>{(fin?.margin||0) >= 0 ? '+' : ''}{(fin?.margin||0).toFixed(0)}%</div>
                       </div>
                       <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:8, color:'#c4b8e0', letterSpacing:'0.06em' }}>VER →</div>
                     </div>
@@ -1209,13 +1267,23 @@ export default function App() {
               </div>
 
               <div className="section">
-                <div className="section-title">asistencia total</div>
-                <div className="input-row">
-                  <span className="input-label">personas</span>
-                  <span style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:32, letterSpacing:'0.04em', color: att > 150 ? '#e05585' : '#8b72e8', lineHeight:1 }}>{att}</span>
-                  <span className="range-val" style={{ color:'#a89ec0', fontSize:11, minWidth:'auto' }}>
-                    {att > 150 ? '⚠ supera el cap de 150' : 'suma de tickets vendidos · cap 150'}
-                  </span>
+                <div className="section-title">asistencia</div>
+                <div className="card" style={{ padding:'4px 0' }}>
+                  <div className="toggle-row">
+                    <span className="toggle-label">entradas vendidas<span className="toggle-sub">suma de tandas de ticketing</span></span>
+                    <span style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:26, letterSpacing:'0.04em', color:'#8b72e8', lineHeight:1 }}>{att}</span>
+                  </div>
+                  <div className="toggle-row">
+                    <span className="toggle-label">cortesías / invitados<span className="toggle-sub">ocupan cupo, no pagan</span></span>
+                    <input type="number" min={0} value={comps} onChange={e => set('comps', Math.max(0, Number(e.target.value) || 0))} style={{ width:90 }} />
+                  </div>
+                  <div className="toggle-row" style={{ background:'rgba(167,139,250,0.06)' }}>
+                    <span className="toggle-label" style={{ color:'#1e1535', fontWeight:600 }}>total en sala</span>
+                    <span style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:30, letterSpacing:'0.04em', color: totalPeople > 150 ? '#e05585' : '#1e1535', lineHeight:1 }}>{totalPeople}</span>
+                    <span className="range-val" style={{ color: totalPeople > 150 ? '#e05585' : '#a89ec0', fontSize:11, minWidth:'auto' }}>
+                      {totalPeople > 150 ? '⚠ supera el cap de 150' : '/ 150 cap'}
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -1238,18 +1306,62 @@ export default function App() {
               </div>
 
               <div className="section">
-                <div className="section-title">guardarropa (100% productora)</div>
+                <div className="section-title">guardarropa por tanda (100% productora)</div>
+                <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, color:'#a89ec0', margin:'0 2px 10px', letterSpacing:'0.04em' }}>
+                  el precio varía según el horario de la noche
+                </div>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(190px,1fr))', gap:12 }}>
+                  {wardrobe.map((w, i) => (
+                    <div key={i} className={`tier-card t${(i % 3) + 1}`}>
+                      <button className="tier-remove" title="quitar tanda" onClick={() => removeWardrobe(i)}>✕</button>
+                      <input className="tier-name-input" type="text" value={w.label} onChange={e => upWardrobe(i, 'label', e.target.value)} placeholder="FRANJA HORARIA" />
+                      <div className="tier-field"><label>PERSONAS</label><input type="number" min={0} value={w.people} onChange={e => upWardrobe(i, 'people', e.target.value)} /></div>
+                      <div className="tier-field"><label>PRECIO $ARS</label><input type="number" step={500} min={0} value={w.price} onChange={e => upWardrobe(i, 'price', e.target.value)} /></div>
+                      <div className="tier-revenue">{w.people} pers.<br />subtotal: <span>{fmt(w.people * w.price)}</span></div>
+                    </div>
+                  ))}
+                </div>
+                <button className="add-row-btn" onClick={addWardrobe}>+ AGREGAR FRANJA</button>
+                <div style={{ padding:'10px 2px 0', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, color:'#6b5e88', letterSpacing:'0.04em' }}>
+                  total guardarropa: <strong style={{ color:'#1e1535' }}>{fmt(wRev)}</strong> · {wPeople} personas
+                </div>
+              </div>
+
+              <div className="section">
+                <div className="section-title">venue · pago</div>
                 <div className="card" style={{ padding:'4px 0' }}>
                   <div className="toggle-row">
-                    <span className="toggle-label">precio por persona</span>
-                    <input type="number" value={wPrice} step={500} min={0} onChange={e => set('wPrice', Number(e.target.value))} />
+                    <span className="toggle-label">costo del venue</span>
+                    <input type="number" step={10000} min={0} value={venueCost} onChange={e => set('venueCost', Math.max(0, Number(e.target.value) || 0))} style={{ width:130 }} />
                   </div>
                   <div className="toggle-row">
-                    <span className="toggle-label">personas que usan guardarropa</span>
-                    <input type="number" min={0} value={wPeople} onChange={e => set('wPeople', Math.max(0, Number(e.target.value) || 0))} />
+                    <span className="toggle-label">seña / adelanto pagado</span>
+                    <input type="number" step={10000} min={0} value={venueDeposit || 0} onChange={e => set('venueDeposit', Math.max(0, Number(e.target.value) || 0))} style={{ width:130 }} />
+                  </div>
+                  <div className="toggle-row">
+                    <span className="toggle-label">venue pagado en su totalidad</span>
+                    <label style={{ display:'flex', alignItems:'center', gap:6, cursor:'pointer' }}>
+                      <input type="checkbox" checked={!!venuePaid} onChange={e => set('venuePaid', e.target.checked)} />
+                      <span className={`crew-badge ${venuePaid ? 'badge-paid' : 'badge-unpaid'}`}>{venuePaid ? 'pagado' : 'pendiente'}</span>
+                    </label>
+                  </div>
+                  <div style={{ padding:'8px 14px', fontFamily:"'IBM Plex Mono',monospace", fontSize:10, color: venuePaid ? '#2a9068' : '#c0446e' }}>
+                    {venuePaid
+                      ? '✓ saldado'
+                      : `saldo pendiente: ${fmt(Math.max(0, venueCost - (Number(venueDeposit) || 0)))}`}
+                  </div>
+                </div>
+              </div>
+
+              <div className="section">
+                <div className="section-title">contexto · cotización USD</div>
+                <div className="card" style={{ padding:'4px 0' }}>
+                  <div className="toggle-row">
+                    <span className="toggle-label">dólar a la fecha del evento<span className="toggle-sub">para comparar entre fechas sin que la inflación distorsione</span></span>
+                    <input type="number" step={10} min={0} value={usdRate || 0} onChange={e => set('usdRate', Math.max(0, Number(e.target.value) || 0))} style={{ width:110 }} placeholder="$/USD" />
                   </div>
                   <div style={{ padding:'8px 14px', fontFamily:"'IBM Plex Mono',monospace", fontSize:10, color:'#a89ec0' }}>
-                    total: {fmt(wRev)} · {wPeople} personas
+                    {usdRate > 0 ? `neto en dólares: ${toUsd(balance)}` : 'cargá la cotización para ver el neto en USD'}
                   </div>
                 </div>
               </div>
@@ -1266,7 +1378,7 @@ export default function App() {
                 <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, color:'#a89ec0', letterSpacing:'0.12em', margin:'14px 0 8px', textTransform:'uppercase' }}>desglose de costos</div>
                 <div style={{ background:'rgba(255,255,255,0.65)', backdropFilter:'blur(12px)', border:'1px solid rgba(200,180,240,0.35)', borderRadius:12, overflow:'hidden', marginBottom:8 }}>
                   {[
-                    ['VENUE (opción 1)', 900000],
+                    ['VENUE', venueCost],
                     ['DJS', totalDjFee],
                     ...(optionalCosts || []).filter(c => c.amount > 0).map(c => [c.label || 'COSTO EXTRA', c.amount]),
                     ...(publi  > 0 ? [['PUBLICIDAD', publi]]       : []),
@@ -1293,15 +1405,28 @@ export default function App() {
                   </div>
                 </div>
 
+                <div className="grid2" style={{ marginTop:4 }}>
+                  <div className={`stat ${balance >= 0 ? 'positive' : 'highlight'}`}>
+                    <div className="stat-label">{balance >= 0 ? 'NETO (ganancia)' : 'NETO (pérdida)'}</div>
+                    <div className="stat-value">{balance >= 0 ? '+' : ''}{fmt(balance)}</div>
+                    {usdRate > 0 && <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, color:'#a89ec0', marginTop:4 }}>{toUsd(balance)}</div>}
+                  </div>
+                  <div className="stat">
+                    <div className="stat-label">MARGEN</div>
+                    <div className="stat-value" style={{ color: margin >= 0 ? '#34a87a' : '#e05585' }}>{margin >= 0 ? '+' : ''}{margin.toFixed(1)}%</div>
+                    <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, color:'#a89ec0', marginTop:4 }}>sobre ingresos</div>
+                  </div>
+                </div>
+
                 <div className="progress-bar">
                   <div className="progress-fill" style={{ width:`${cov}%`, background: balance >= 0 ? 'linear-gradient(90deg,#34a87a,#44d4a0)' : 'linear-gradient(90deg,#e879c0,#e05585)' }} />
                 </div>
                 <div className="progress-label"><span>$0</span><span>cobertura {cov}%</span><span>{fmt(netCost)}</span></div>
                 <div className={`verdict ${balance >= 0 ? 'ok' : 'loss'}`}>
-                  <div className="verdict-title">{balance >= 0 ? '✓ resultado positivo' : '⚠ pérdida proyectada'}</div>
+                  <div className="verdict-title">{balance >= 0 ? '✓ resultado positivo' : '⚠ pérdida'}</div>
                   {balance >= 0
-                    ? `GANANCIA: ${fmt(balance)} con ${att} personas.`
-                    : `PÉRDIDA: ${fmt(Math.abs(balance))} con ${att} personas.\nNecesitás aprox. ${Math.ceil(netCost / (totalRev / Math.max(att, 1)))} personas para cubrir el costo neto.`}
+                    ? `GANANCIA: ${fmt(balance)} con ${att} entradas vendidas (${totalPeople} en sala).`
+                    : `PÉRDIDA: ${fmt(Math.abs(balance))} con ${att} entradas vendidas.\nNecesitás aprox. ${Math.ceil(netCost / (totalRev / Math.max(att, 1)))} entradas para cubrir el costo neto.`}
                 </div>
               </div>
             </>}
@@ -1331,6 +1456,15 @@ export default function App() {
                         <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:'#a89ec0', marginBottom:3, letterSpacing:'0.1em' }}>FEE $ARS</div>
                         <input type="number" value={dj.fee} min={0} step={5000} onChange={e => upLineup(i, 'fee', Number(e.target.value))} style={{ width:120, color: dj.fee > 0 ? '#ea7c3a' : '#a89ec0', fontWeight:600 }} />
                       </div>
+                      {dj.fee > 0 && (
+                        <div style={{ flex:'0 0 auto' }}>
+                          <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:'#a89ec0', marginBottom:3, letterSpacing:'0.1em' }}>PAGO</div>
+                          <label style={{ display:'flex', alignItems:'center', gap:6, cursor:'pointer', padding:'5px 0' }}>
+                            <input type="checkbox" checked={!!dj.paid} onChange={e => upLineup(i, 'paid', e.target.checked)} />
+                            <span className={`crew-badge ${dj.paid ? 'badge-paid' : 'badge-unpaid'}`}>{dj.paid ? 'pagado' : 'pendiente'}</span>
+                          </label>
+                        </div>
+                      )}
                       <button onClick={() => removeSlot(i)} style={{ background:'none', border:'1px solid rgba(224,85,133,0.3)', color:'#e05585', fontFamily:"'IBM Plex Mono',monospace", fontSize:10, padding:'5px 10px', borderRadius:6, cursor:'pointer', marginTop:14, letterSpacing:'0.1em' }}>✕</button>
                     </div>
                   </div>
@@ -1420,6 +1554,35 @@ export default function App() {
                   <div className="stat positive"><div className="stat-label">APORTES LISTA</div><div className="stat-value">{fmt(totalAportes)}</div></div>
                   <div className="stat positive span2"><div className="stat-label">TOTAL APORTADO (incl. aporte $ por integrante)</div><div className="stat-value">{fmt(totalCrewContrib)}</div></div>
                 </div>
+              </div>
+
+              <div className="section">
+                <div className="section-title">liquidación · reparto por aportes</div>
+                <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, color:'#a89ec0', margin:'0 2px 10px', letterSpacing:'0.04em' }}>
+                  el neto del evento ({balance >= 0 ? 'ganancia' : 'pérdida'} {fmt(Math.abs(balance))}) se reparte en proporción a lo que aportó cada integrante
+                </div>
+                {liquidacion.total === 0 ? (
+                  <div className="card" style={{ padding:'14px', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, color:'#a89ec0', letterSpacing:'0.04em' }}>
+                    sin aportes cargados · cargá aportes (arriba) para calcular el reparto
+                  </div>
+                ) : (
+                  <>
+                    {liquidacion.rows.map((r) => (
+                      <div key={r.name} className="crew-row">
+                        <span className="crew-name" style={{ flex:'1 1 auto' }}>{r.name}</span>
+                        <span style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, color:'#a89ec0', minWidth:90, textAlign:'right' }}>aportó {fmt(r.aporte)}</span>
+                        <span className="crew-badge badge-access" style={{ minWidth:48, textAlign:'center' }}>{r.pct.toFixed(1)}%</span>
+                        <span style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:14, fontWeight:600, color: r.share >= 0 ? '#2a9068' : '#e05585', minWidth:100, textAlign:'right' }}>
+                          {r.share >= 0 ? '+' : ''}{fmt(r.share)}
+                        </span>
+                      </div>
+                    ))}
+                    <div style={{ display:'flex', justifyContent:'space-between', padding:'11px 14px', marginTop:6, background: balance >= 0 ? 'rgba(210,245,230,0.45)' : 'rgba(255,220,235,0.45)', borderRadius:10 }}>
+                      <span style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, color:'#6b5e88', letterSpacing:'0.1em' }}>TOTAL A REPARTIR</span>
+                      <span style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:14, fontWeight:600, color: balance >= 0 ? '#2a9068' : '#e05585' }}>{balance >= 0 ? '+' : ''}{fmt(balance)}</span>
+                    </div>
+                  </>
+                )}
               </div>
             </>}
 
