@@ -390,7 +390,7 @@ const DEFAULT_STATE = {
   inclVideo: false,
   inclPlatform: true,
   wPrice: 2000,
-  wPct: 50,
+  wPeople: 40,
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -425,6 +425,15 @@ const deriveTickets = (s) => {
   return { sold, att }
 }
 
+// Personas que usan guardarropa: valor directo controlable. Para eventos viejos
+// (sin `wPeople`) se deriva del porcentaje `wPct` guardado sobre la asistencia.
+const deriveWardrobe = (s, att) => {
+  if (s.wPeople !== undefined && s.wPeople !== null && s.wPeople !== '') {
+    return Math.max(0, Number(s.wPeople) || 0)
+  }
+  return Math.round(att * (Number(s.wPct) || 50) / 100)
+}
+
 const computeFinancials = (s) => {
   if (!s) return null
   const lineup  = s.lineup  || []
@@ -434,9 +443,9 @@ const computeFinancials = (s) => {
   const publi   = Number(s.publi)    || 0
   const extras  = Number(s.extras)   || 0
   const wPrice  = Number(s.wPrice)   || 2000
-  const wPct    = Number(s.wPct)     || 50
 
   const { sold, att } = deriveTickets(s)
+  const wPeople = deriveWardrobe(s, att)
 
   const totalDjFee       = lineup.reduce((a, dj) => a + (Number(dj.fee) || 0), 0)
   const crewDirect       = crew.reduce((a, c) => a + (Number(c.amount) || 0), 0)
@@ -450,7 +459,7 @@ const computeFinancials = (s) => {
   const revs  = tiers.map((t, i) => sold[i] * (Number(t.price) || 0))
   const tickRev  = revs.reduce((a, b) => a + b, 0)
   const platFee  = s.inclPlatform ? tickRev * 0.1 : 0
-  const wRev     = Math.round(att * wPct / 100) * wPrice
+  const wRev     = wPeople * wPrice
   const totalRev = tickRev + wRev - platFee
   const balance  = totalRev - netCost
   return { att, netCost, tickRev, wRev, platFee, totalRev, balance, totalDjFee, totalCrewContrib, totalAportes }
@@ -498,7 +507,7 @@ export default function App() {
   const isRemoteUpdate = useRef(false)
   const eventVersion   = useRef(0)
 
-  const { name, date, lineup, crew, tiers, aportes, publi, extras, optionalCosts, inclAudio, inclVideo, inclPlatform, wPrice, wPct } = state
+  const { name, date, lineup, crew, tiers, aportes, publi, extras, optionalCosts, inclAudio, inclVideo, inclPlatform, wPrice } = state
 
   // ── Persist sidebar state ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -711,7 +720,8 @@ export default function App() {
   const revs  = tiers.map((t, i) => sold[i] * (Number(t.price) || 0))
   const tickRev   = revs.reduce((a, b) => a + b, 0)
   const platFee   = inclPlatform ? tickRev * 0.1 : 0
-  const wRev      = Math.round(att * wPct / 100) * wPrice
+  const wPeople   = deriveWardrobe(state, att)
+  const wRev      = wPeople * wPrice
   const totalRev  = tickRev + wRev - platFee
   const balance   = totalRev - netCost
   const cov       = Math.min(100, Math.round(totalRev / Math.max(netCost, 1) * 100))
@@ -1235,12 +1245,11 @@ export default function App() {
                     <input type="number" value={wPrice} step={500} min={0} onChange={e => set('wPrice', Number(e.target.value))} />
                   </div>
                   <div className="toggle-row">
-                    <span className="toggle-label">% personas que usan guardarropa</span>
-                    <input type="range" min={0} max={100} step={5} value={wPct} onChange={e => set('wPct', Number(e.target.value))} />
-                    <span className="range-val">{wPct}%</span>
+                    <span className="toggle-label">personas que usan guardarropa</span>
+                    <input type="number" min={0} value={wPeople} onChange={e => set('wPeople', Math.max(0, Number(e.target.value) || 0))} />
                   </div>
                   <div style={{ padding:'8px 14px', fontFamily:"'IBM Plex Mono',monospace", fontSize:10, color:'#a89ec0' }}>
-                    estimado: {fmt(wRev)} · {Math.round(att * wPct / 100)} personas
+                    total: {fmt(wRev)} · {wPeople} personas
                   </div>
                 </div>
               </div>
