@@ -263,6 +263,15 @@ input[type="checkbox"] { width: 14px; height: 14px; accent-color: #a78bfa; curso
 .tier-field input { width: 100%; }
 .tier-revenue { margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(200,180,240,0.2); font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #a89ec0; }
 .tier-revenue span { color: #1e1535; font-weight: 600; }
+.tier-name-input { width: 100%; background: rgba(255,255,255,0.55); border: 1px solid rgba(200,180,240,0.35); border-radius: 6px; padding: 5px 26px 5px 8px; font-family: 'Bebas Neue', sans-serif; font-size: 17px; letter-spacing: 0.08em; color: #1e1535; margin-bottom: 6px; }
+.tier-desc-input { width: 100%; background: rgba(255,255,255,0.55); border: 1px solid rgba(200,180,240,0.35); border-radius: 6px; padding: 4px 8px; font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: #6b5e88; margin-bottom: 12px; }
+.tier-remove { position: absolute; top: 8px; right: 8px; z-index: 2; background: none; border: 1px solid rgba(224,85,133,0.3); color: #e05585; font-family: 'IBM Plex Mono', monospace; font-size: 10px; line-height: 1; padding: 3px 7px; border-radius: 6px; cursor: pointer; }
+.tier-remove:hover { background: rgba(224,85,133,0.1); }
+.crew-name-input { flex: 1; min-width: 80px; background: rgba(255,255,255,0.55); border: 1px solid rgba(200,180,240,0.35); border-radius: 6px; padding: 4px 8px; font-family: 'Bebas Neue', sans-serif; font-size: 20px; letter-spacing: 0.06em; color: #1e1535; }
+.crew-remove { background: none; border: 1px solid rgba(224,85,133,0.3); color: #e05585; font-family: 'IBM Plex Mono', monospace; font-size: 10px; line-height: 1; padding: 5px 9px; border-radius: 6px; cursor: pointer; }
+.crew-remove:hover { background: rgba(224,85,133,0.1); }
+.add-row-btn { width: 100%; background: rgba(255,255,255,0.5); border: 1px dashed rgba(200,180,240,0.5); color: #a89ec0; font-family: 'IBM Plex Mono', monospace; font-size: 11px; padding: 12px; border-radius: 8px; cursor: pointer; letter-spacing: 0.12em; margin-top: 12px; }
+.add-row-btn:hover { background: rgba(167,139,250,0.08); color: #8b72e8; }
 
 .crew-row { display: flex; align-items: center; gap: 10px; padding: 11px 14px; background: rgba(255,255,255,0.65); backdrop-filter: blur(12px); border: 1px solid rgba(200,180,240,0.3); border-radius: 10px; margin-bottom: 6px; flex-wrap: wrap; }
 .crew-name { font-family: 'Bebas Neue', sans-serif; font-size: 20px; letter-spacing: 0.06em; flex: 1; min-width: 80px; color: #1e1535; }
@@ -364,21 +373,22 @@ const DEFAULT_STATE = {
     { name: 'CCX',     paid: false, access: true, amount: 0 },
     { name: 'ACE',     paid: false, access: true, amount: 0 },
     { name: 'NOISED',  paid: false, access: true, amount: 0 },
-    { name: 'JOTAEME', paid: false, access: true, amount: 0 },
-    { name: 'ZAI',     paid: false, access: true, amount: 0 },
+    { name: 'JOTAEME',    paid: false, access: true, amount: 0 },
+    { name: 'ZAI',        paid: false, access: true, amount: 0 },
+    { name: 'GOLONDRINA', paid: false, access: true, amount: 0 },
   ],
   tiers: [
-    { name: 'EARLY BIRD', desc: 'primeras 20 entradas',    qty: 20,  price: 5000  },
-    { name: 'ANTICIPADA', desc: 'lote principal preventa', qty: 40,  price: 7500  },
-    { name: 'PUERTA',     desc: 'en el evento',            qty: 999, price: 11000 },
+    { name: 'EARLY BIRD', desc: 'primeras 20 entradas',    qty: 20, price: 5000,  sold: 20 },
+    { name: 'ANTICIPADA', desc: 'lote principal preventa', qty: 40, price: 7500,  sold: 40 },
+    { name: 'PUERTA',     desc: 'en el evento',            qty: 90, price: 11000, sold: 20 },
   ],
+  aportes: [],
   publi: 0,
   extras: 0,
   optionalCosts: [],
   inclAudio: false,
   inclVideo: false,
   inclPlatform: true,
-  att: 80,
   wPrice: 2000,
   wPct: 50,
 }
@@ -399,33 +409,51 @@ const ADMIN_PASS = import.meta.env.VITE_ADMIN_PASSWORD || 'OMEN2025'
 
 // ─── Cross-event financial summary ───────────────────────────────────────────
 
+// Asistencia = suma de tickets vendidos por tanda. Para eventos viejos (sin
+// `sold` por tanda) se reparte el total `att` guardado entre las tandas por cupo.
+const deriveTickets = (s) => {
+  const tiers = s.tiers || []
+  const hasSold = tiers.some(t => t && t.sold !== undefined && t.sold !== null && t.sold !== '')
+  let sold
+  if (hasSold) {
+    sold = tiers.map(t => Math.max(0, Number(t.sold) || 0))
+  } else {
+    let rem = Number(s.att) || 0
+    sold = tiers.map(t => { if (rem <= 0) return 0; const v = Math.min(Number(t.qty) || 0, rem); rem -= v; return v })
+  }
+  const att = sold.reduce((a, b) => a + b, 0)
+  return { sold, att }
+}
+
 const computeFinancials = (s) => {
   if (!s) return null
   const lineup  = s.lineup  || []
   const crew    = s.crew    || []
   const tiers   = s.tiers   || []
-  const att     = Number(s.att)      || 80
+  const aportes = s.aportes || []
   const publi   = Number(s.publi)    || 0
   const extras  = Number(s.extras)   || 0
   const wPrice  = Number(s.wPrice)   || 2000
   const wPct    = Number(s.wPct)     || 50
 
+  const { sold, att } = deriveTickets(s)
+
   const totalDjFee       = lineup.reduce((a, dj) => a + (Number(dj.fee) || 0), 0)
-  const totalCrewContrib = crew.reduce((a, c) => a + (Number(c.amount) || 0), 0)
+  const crewDirect       = crew.reduce((a, c) => a + (Number(c.amount) || 0), 0)
+  const totalAportes     = aportes.reduce((a, c) => a + (Number(c.amount) || 0), 0)
+  const totalCrewContrib = crewDirect + totalAportes
   const optCosts         = (s.inclAudio ? 50000 : 0) + (s.inclVideo ? 70000 : 0)
   const customCostTotal  = (s.optionalCosts || []).reduce((a, c) => a + (Number(c.amount) || 0), 0) + publi + extras
   const totalFixed       = 900000 + totalDjFee + customCostTotal + optCosts
   const netCost          = totalFixed - totalCrewContrib
 
-  let rem = att
-  const sold  = tiers.map(t => { if (rem <= 0) return 0; const sv = Math.min(t.qty, rem); rem -= sv; return sv })
-  const revs  = tiers.map((t, i) => sold[i] * t.price)
+  const revs  = tiers.map((t, i) => sold[i] * (Number(t.price) || 0))
   const tickRev  = revs.reduce((a, b) => a + b, 0)
   const platFee  = s.inclPlatform ? tickRev * 0.1 : 0
   const wRev     = Math.round(att * wPct / 100) * wPrice
   const totalRev = tickRev + wRev - platFee
   const balance  = totalRev - netCost
-  return { att, netCost, tickRev, wRev, platFee, totalRev, balance, totalDjFee }
+  return { att, netCost, tickRev, wRev, platFee, totalRev, balance, totalDjFee, totalCrewContrib, totalAportes }
 }
 
 // ─── App ──────────────────────────────────────────────────────────────────────
@@ -470,7 +498,7 @@ export default function App() {
   const isRemoteUpdate = useRef(false)
   const eventVersion   = useRef(0)
 
-  const { name, date, lineup, crew, tiers, publi, extras, optionalCosts, inclAudio, inclVideo, inclPlatform, att, wPrice, wPct } = state
+  const { name, date, lineup, crew, tiers, aportes, publi, extras, optionalCosts, inclAudio, inclVideo, inclPlatform, wPrice, wPct } = state
 
   // ── Persist sidebar state ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -639,24 +667,48 @@ export default function App() {
   const removeSlot = i  => set('lineup', lineup.filter((_, idx) => idx !== i))
 
   const upTier = (i, f, v) => {
-    const t = [...tiers]; t[i] = { ...t[i], [f]: Number(v) }; set('tiers', t)
+    const t = [...tiers]
+    const val = (f === 'qty' || f === 'price') ? Number(v) : v
+    t[i] = { ...t[i], [f]: val }; set('tiers', t)
   }
+  const addTier    = () => set('tiers', [...tiers, { name: 'NUEVA TANDA', desc: '', qty: 50, price: 8000 }])
+  const removeTier = i  => set('tiers', tiers.filter((_, idx) => idx !== i))
 
   const upCrew = (i, f, v) => {
     const c = [...crew]; c[i] = { ...c[i], [f]: v }; set('crew', c)
   }
+  const addCrew    = () => set('crew', [...crew, { name: '', paid: false, access: true, amount: 0 }])
+  const removeCrew = i  => set('crew', crew.filter((_, idx) => idx !== i))
+
+  // Vendidas: al editar una tanda sembramos `sold` en TODAS (desde la
+  // distribución derivada actual) para no perder el conteo de eventos viejos.
+  const setSold = (i, v) => {
+    const next = tiers.map((t, idx) => ({
+      ...t,
+      sold: idx === i ? Math.max(0, Number(v) || 0) : Math.max(0, Number(t.sold ?? sold[idx]) || 0),
+    }))
+    set('tiers', next)
+  }
+
+  const aportesList = aportes || []
+  const addAporte    = () => set('aportes', [...aportesList, { crew: crew[0]?.name || '', concept: '', amount: 0 }])
+  const upAporte     = (i, f, v) => {
+    const a = [...aportesList]; a[i] = { ...a[i], [f]: (f === 'amount' ? Number(v) : v) }; set('aportes', a)
+  }
+  const removeAporte = i => set('aportes', aportesList.filter((_, idx) => idx !== i))
 
   // ── Derived financials ────────────────────────────────────────────────────────
+  const { sold, att }    = deriveTickets(state)
   const totalDjFee       = lineup.reduce((a, dj) => a + (Number(dj.fee) || 0), 0)
-  const totalCrewContrib = crew.reduce((a, c)    => a + (Number(c.amount) || 0), 0)
+  const crewDirect       = crew.reduce((a, c)    => a + (Number(c.amount) || 0), 0)
+  const totalAportes     = aportesList.reduce((a, c) => a + (Number(c.amount) || 0), 0)
+  const totalCrewContrib = crewDirect + totalAportes
   const optCosts         = (inclAudio ? 50000 : 0) + (inclVideo ? 70000 : 0)
   const customCostTotal  = (optionalCosts || []).reduce((a, c) => a + (Number(c.amount) || 0), 0) + (publi || 0) + (extras || 0)
   const totalFixed       = 900000 + totalDjFee + customCostTotal + optCosts
   const netCost          = totalFixed - totalCrewContrib
 
-  let rem = att
-  const sold  = tiers.map(t => { if (rem <= 0) return 0; const s = Math.min(t.qty, rem); rem -= s; return s })
-  const revs  = tiers.map((t, i) => sold[i] * t.price)
+  const revs  = tiers.map((t, i) => sold[i] * (Number(t.price) || 0))
   const tickRev   = revs.reduce((a, b) => a + b, 0)
   const platFee   = inclPlatform ? tickRev * 0.1 : 0
   const wRev      = Math.round(att * wPct / 100) * wPrice
@@ -913,6 +965,22 @@ export default function App() {
             const maxRev    = Math.max(...finances.map(({ fin }) => fin?.totalRev || 0), 1)
             const maxAtt    = Math.max(...finances.map(({ fin }) => fin?.att || 0), 1)
             const sorted    = [...finances].sort((a, b) => (b.ev.date || '').localeCompare(a.ev.date || ''))
+
+            // Aportes del team agregados por integrante (aporte $ por miembro + lista de aportes)
+            const aporteByMember = {}
+            eventsWithData.forEach(ev => {
+              (ev.crew || []).forEach(c => {
+                const amt = Number(c.amount) || 0
+                if (amt && c.name) aporteByMember[c.name] = (aporteByMember[c.name] || 0) + amt
+              })
+              ;(ev.aportes || []).forEach(a => {
+                const amt = Number(a.amount) || 0
+                if (amt && a.crew) aporteByMember[a.crew] = (aporteByMember[a.crew] || 0) + amt
+              })
+            })
+            const aporteRanking = Object.entries(aporteByMember).sort((a, b) => b[1] - a[1])
+            const totalAportes  = aporteRanking.reduce((a, [, v]) => a + v, 0)
+            const maxAporte     = Math.max(...aporteRanking.map(([, v]) => v), 1)
             return (
               <>
                 <div className="section-title" style={{ marginBottom:16 }}>resumen general</div>
@@ -943,6 +1011,22 @@ export default function App() {
                     <div className="dash-kpi-label">TICKET PROM.</div>
                     <div className="dash-kpi-value">{eventsWithData.length ? fmt(totalRev / eventsWithData.length) : '—'}</div>
                   </div>
+                  <div className="dash-kpi">
+                    <div className="dash-kpi-label">APORTES DEL TEAM</div>
+                    <div className="dash-kpi-value pos">{fmt(totalAportes)}</div>
+                  </div>
+                </div>
+
+                {/* NETO final — cuánto está generando la productora */}
+                <div style={{ background: totalBal >= 0 ? 'linear-gradient(135deg,rgba(52,168,122,0.12),rgba(167,139,250,0.10))' : 'linear-gradient(135deg,rgba(224,85,133,0.12),rgba(167,139,250,0.10))', border:`1px solid ${totalBal >= 0 ? 'rgba(52,168,122,0.3)' : 'rgba(224,85,133,0.3)'}`, borderRadius:16, padding:'20px 22px', marginBottom:24, display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:12 }}>
+                  <div>
+                    <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, color:'#a89ec0', letterSpacing:'0.14em', textTransform:'uppercase', marginBottom:4 }}>NETO GENERADO · {eventsWithData.length} evento{eventsWithData.length === 1 ? '' : 's'}</div>
+                    <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:44, lineHeight:1, letterSpacing:'0.02em', color: totalBal >= 0 ? '#2a9068' : '#e05585' }}>{totalBal >= 0 ? '+' : ''}{fmt(totalBal)}</div>
+                  </div>
+                  <div style={{ textAlign:'right', fontFamily:"'IBM Plex Mono',monospace", fontSize:10, color:'#a89ec0', letterSpacing:'0.06em', lineHeight:1.9 }}>
+                    ingresos {fmt(totalRev)}<br />− costos {fmt(totalCost)}<br />
+                    <span style={{ color:'#2a9068' }}>incl. aportes team {fmt(totalAportes)}</span>
+                  </div>
                 </div>
 
                 {/* Revenue chart */}
@@ -972,6 +1056,22 @@ export default function App() {
                       </div>
                     ))}
                   </div>
+
+                  {/* Aportes del team chart */}
+                  {aporteRanking.length > 0 && <>
+                    <div className="section-title" style={{ marginBottom:12 }}>aportes del team <span style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:'#a89ec0', letterSpacing:'0.08em', textTransform:'none' }}>· reducen los gastos · total {fmt(totalAportes)}</span></div>
+                    <div style={{ marginBottom:24 }}>
+                      {aporteRanking.map(([member, amt]) => (
+                        <div key={member} className="dash-bar-row">
+                          <div className="dash-bar-label">{member}</div>
+                          <div className="dash-bar-track">
+                            <div className="dash-bar-fill" style={{ width:`${(amt/maxAporte*100).toFixed(1)}%`, background:'linear-gradient(90deg,#34a87a,#44d4a0)' }} />
+                          </div>
+                          <div className="dash-bar-val">{fmt(amt)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </>}
 
                   {/* Per-event breakdown */}
                   <div className="section-title" style={{ marginBottom:12 }}>desglose por evento</div>
@@ -1099,30 +1199,32 @@ export default function App() {
               </div>
 
               <div className="section">
-                <div className="section-title">asistencia estimada</div>
+                <div className="section-title">asistencia total</div>
                 <div className="input-row">
                   <span className="input-label">personas</span>
-                  <input type="number" min={1} max={150} value={att} onChange={e => set('att', Math.min(150, Math.max(1, Number(e.target.value) || 1)))} style={{ width: 90 }} />
-                  <span className="range-val" style={{ color:'#a89ec0', fontSize:11, minWidth:'auto' }}>/ 150 máx.</span>
+                  <span style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:32, letterSpacing:'0.04em', color: att > 150 ? '#e05585' : '#8b72e8', lineHeight:1 }}>{att}</span>
+                  <span className="range-val" style={{ color:'#a89ec0', fontSize:11, minWidth:'auto' }}>
+                    {att > 150 ? '⚠ supera el cap de 150' : 'suma de tickets vendidos · cap 150'}
+                  </span>
                 </div>
               </div>
 
               <div className="section">
                 <div className="section-title">tandas de ticketing</div>
-                <div className="grid3">
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(190px,1fr))', gap:12 }}>
                   {tiers.map((t, i) => (
-                    <div key={i} className={`tier-card t${i + 1}`}>
-                      <div className="tier-name">{t.name}</div>
-                      <div className="tier-desc">{t.desc}</div>
-                      {i < 2
-                        ? <div className="tier-field"><label>CUPO</label><input type="number" value={t.qty} min={1} max={149} onChange={e => upTier(i, 'qty', e.target.value)} /></div>
-                        : <div className="tier-field"><label>DISP.</label><input type="number" value={sold[i]} disabled style={{ opacity:0.4 }} /></div>
-                      }
+                    <div key={i} className={`tier-card t${(i % 3) + 1}`}>
+                      <button className="tier-remove" title="quitar tanda" onClick={() => removeTier(i)}>✕</button>
+                      <input className="tier-name-input" type="text" value={t.name} onChange={e => upTier(i, 'name', e.target.value)} placeholder="NOMBRE TANDA" />
+                      <input className="tier-desc-input" type="text" value={t.desc} onChange={e => upTier(i, 'desc', e.target.value)} placeholder="descripción" />
+                      <div className="tier-field"><label>VENDIDAS</label><input type="number" value={sold[i]} min={0} onChange={e => setSold(i, e.target.value)} style={{ fontWeight:600, color:'#8b72e8' }} /></div>
+                      <div className="tier-field"><label>CUPO (objetivo)</label><input type="number" value={t.qty} min={0} onChange={e => upTier(i, 'qty', e.target.value)} /></div>
                       <div className="tier-field"><label>PRECIO $ARS</label><input type="number" value={t.price} step={500} min={0} onChange={e => upTier(i, 'price', e.target.value)} /></div>
-                      <div className="tier-revenue">vendidas: <span>{sold[i]}</span><br />subtotal: <span>{fmt(revs[i])}</span></div>
+                      <div className="tier-revenue">{sold[i]}/{t.qty || 0} vendidas<br />subtotal: <span>{fmt(revs[i])}</span></div>
                     </div>
                   ))}
                 </div>
+                <button className="add-row-btn" onClick={addTier}>+ AGREGAR TANDA</button>
               </div>
 
               <div className="section">
@@ -1264,7 +1366,7 @@ export default function App() {
                 <div className="section-title">team the omen records</div>
                 {crew.map((c, i) => (
                   <div key={i} className="crew-row">
-                    <span className="crew-name">{c.name}</span>
+                    <input className="crew-name-input" type="text" value={c.name} onChange={e => upCrew(i, 'name', e.target.value)} placeholder="NOMBRE" />
                     <label style={{ display:'flex', alignItems:'center', gap:6, cursor:'pointer' }}>
                       <input type="checkbox" checked={c.paid} onChange={e => upCrew(i, 'paid', e.target.checked)} />
                       <span className={`crew-badge ${c.paid ? 'badge-paid' : 'badge-unpaid'}`}>{c.paid ? 'pagó' : 'pendiente'}</span>
@@ -1274,15 +1376,40 @@ export default function App() {
                       <span className={`crew-badge ${c.access ? 'badge-access' : 'badge-noaccess'}`}>{c.access ? 'acceso' : 'sin acceso'}</span>
                     </label>
                     <input type="number" value={c.amount} step={1000} min={0} onChange={e => upCrew(i, 'amount', Number(e.target.value))} style={{ width:100 }} placeholder="aporte $" />
+                    <button className="crew-remove" title="quitar integrante" onClick={() => removeCrew(i)}>✕</button>
                   </div>
                 ))}
+                <button className="add-row-btn" onClick={addCrew}>+ AGREGAR INTEGRANTE</button>
               </div>
+
+              <div className="section">
+                <div className="section-title">aportes del team</div>
+                {aportesList.length === 0 && (
+                  <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, color:'#a89ec0', padding:'4px 2px 10px', letterSpacing:'0.06em' }}>
+                    sin aportes cargados · agregá un aporte de dinero asociado a un integrante
+                  </div>
+                )}
+                {aportesList.map((a, i) => (
+                  <div key={i} className="crew-row">
+                    <select value={a.crew} onChange={e => upAporte(i, 'crew', e.target.value)} style={{ background:'rgba(255,255,255,0.8)', border:'1px solid rgba(200,180,240,0.4)', color:'#1e1535', fontFamily:"'Bebas Neue',sans-serif", fontSize:18, letterSpacing:'0.05em', padding:'5px 8px', borderRadius:6, outline:'none', flex:'0 0 auto', minWidth:120 }}>
+                      {crew.length === 0 && <option value="">—</option>}
+                      {crew.map((c, ci) => <option key={ci} value={c.name}>{c.name || '—'}</option>)}
+                    </select>
+                    <input type="text" value={a.concept} onChange={e => upAporte(i, 'concept', e.target.value)} placeholder="concepto (ej: adelanto barra)" style={{ flex:'1 1 140px', minWidth:120 }} />
+                    <input type="number" value={a.amount} step={1000} min={0} onChange={e => upAporte(i, 'amount', e.target.value)} style={{ width:110 }} placeholder="monto $" />
+                    <button className="crew-remove" title="quitar aporte" onClick={() => removeAporte(i)}>✕</button>
+                  </div>
+                ))}
+                <button className="add-row-btn" onClick={addAporte}>+ AGREGAR APORTE</button>
+              </div>
+
               <div className="section">
                 <div className="section-title">resumen</div>
                 <div className="grid3">
                   <div className="stat"><div className="stat-label">TOTAL CREW</div><div className="stat-value">{crew.length}</div></div>
                   <div className="stat positive"><div className="stat-label">CON ACCESO</div><div className="stat-value">{crew.filter(c => c.access).length}</div></div>
-                  <div className="stat positive"><div className="stat-label">TOTAL APORTADO</div><div className="stat-value">{fmt(totalCrewContrib)}</div></div>
+                  <div className="stat positive"><div className="stat-label">APORTES LISTA</div><div className="stat-value">{fmt(totalAportes)}</div></div>
+                  <div className="stat positive span2"><div className="stat-label">TOTAL APORTADO (incl. aporte $ por integrante)</div><div className="stat-value">{fmt(totalCrewContrib)}</div></div>
                 </div>
               </div>
             </>}
