@@ -1,5 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { collection, doc, onSnapshot, setDoc, addDoc, deleteDoc, serverTimestamp } from 'firebase/firestore'
+import {
+  ResponsiveContainer, ComposedChart, BarChart, LineChart, AreaChart, PieChart,
+  Bar, Line, Area, Pie, Cell,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+} from 'recharts'
 import { db } from './firebase'
 
 // ─── Fonts & CSS ─────────────────────────────────────────────────────────────
@@ -345,6 +350,17 @@ input[type="checkbox"] { width: 14px; height: 14px; accent-color: #a78bfa; curso
 .dash-bar-fill { height:100%; border-radius:4px; transition:width 0.6s ease; }
 .dash-bar-val { font-family:'IBM Plex Mono',monospace; font-size:10px; color:#a89ec0; width:90px; text-align:right; flex-shrink:0; }
 
+/* ── Analytics ── */
+.chart-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:14px; margin-bottom:14px; }
+.chart-card { background:rgba(255,255,255,0.65); backdrop-filter:blur(12px); border:1px solid rgba(200,180,240,0.35); border-radius:14px; padding:16px 14px 8px; }
+.chart-card.wide { grid-column:1 / -1; }
+.chart-card-title { font-family:'IBM Plex Mono',monospace; font-size:10px; color:#6b5e88; letter-spacing:0.12em; text-transform:uppercase; margin:0 4px 2px; }
+.chart-card-sub { font-family:'IBM Plex Mono',monospace; font-size:9px; color:#a89ec0; letter-spacing:0.04em; margin:0 4px 12px; }
+.recharts-cartesian-axis-tick-value { font-family:'IBM Plex Mono',monospace; font-size:9px; fill:#a89ec0; }
+.recharts-legend-item-text { font-family:'IBM Plex Mono',monospace; font-size:10px; color:#6b5e88 !important; }
+.recharts-default-tooltip { border-radius:10px !important; border:1px solid rgba(200,180,240,0.5) !important; background:rgba(248,245,255,0.97) !important; font-family:'IBM Plex Mono',monospace !important; font-size:11px !important; box-shadow:0 12px 30px rgba(30,21,53,0.12); }
+.recharts-tooltip-label { font-family:'IBM Plex Mono',monospace; font-size:10px; color:#1e1535; font-weight:600; }
+
 .ro-wrap { border:none; padding:0; margin:0; min-width:0; display:contents; }
 `
 
@@ -506,6 +522,242 @@ const computeFinancials = (s) => {
            totalFixed, venueCost, usdRate }
 }
 
+// ─── Analytics panel ──────────────────────────────────────────────────────────
+
+const A_COLORS = {
+  rev: '#a78bfa', cost: '#e05585', bal: '#34a87a',
+  tickets: '#e879c0', guarda: '#fb923c',
+  venue: '#a78bfa', djs: '#f472b6', grab: '#60a5fa', otros: '#fbbf24',
+  margin: '#8b72e8', att: '#60a5fa', sala: '#c084fc', ticketProm: '#e879c0',
+}
+const PIE_REV  = ['#e879c0', '#fb923c']
+const PIE_COST = ['#a78bfa', '#f472b6', '#60a5fa', '#fbbf24']
+const PIE_TIER = ['#f472b6', '#fb923c', '#a78bfa', '#60a5fa', '#34d399', '#fbbf24']
+
+const kfmt = (n) => {
+  const a = Math.abs(n)
+  if (a >= 1e6) return (n / 1e6).toFixed(a >= 1e7 ? 0 : 1) + 'M'
+  if (a >= 1e3) return Math.round(n / 1e3) + 'k'
+  return '' + Math.round(n)
+}
+const AXIS = { tick: { fontSize: 9, fill: '#a89ec0', fontFamily: 'IBM Plex Mono, monospace' }, axisLine: { stroke: 'rgba(200,180,240,0.4)' }, tickLine: false }
+const GRID = 'rgba(200,180,240,0.2)'
+const tipMoney  = (v) => fmt(Number(v))
+const tipPct    = (v) => Number(v).toFixed(1) + '%'
+const tipPeople = (v) => Number(v) + ' pers.'
+
+function ChartCard({ title, sub, wide, height = 260, children }) {
+  return (
+    <div className={`chart-card${wide ? ' wide' : ''}`}>
+      <div className="chart-card-title">{title}</div>
+      {sub && <div className="chart-card-sub">{sub}</div>}
+      <ResponsiveContainer width="100%" height={height}>
+        {children}
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
+function Analytics({ events }) {
+  const evs = events.filter(e => e.lineup).map(e => ({ ev: e, fin: computeFinancials(e) }))
+    .sort((a, b) => (a.ev.date || '').localeCompare(b.ev.date || ''))
+
+  if (evs.length === 0) return (
+    <div style={{ textAlign:'center', padding:'60px 20px', fontFamily:"'IBM Plex Mono',monospace", fontSize:11, color:'#a89ec0', letterSpacing:'0.1em', lineHeight:2 }}>
+      NO HAY EVENTOS CON DATOS AÚN<br />CREÁ EVENTOS PARA VER LA ANALÍTICA
+    </div>
+  )
+
+  let acum = 0
+  const series = evs.map(({ ev, fin }) => {
+    acum += fin.balance
+    const grabacion = (ev.inclAudio ? 50000 : 0) + (ev.inclVideo ? 70000 : 0)
+    const otros = (Number(ev.publi) || 0) + (Number(ev.extras) || 0) + (ev.optionalCosts || []).reduce((a, c) => a + (Number(c.amount) || 0), 0)
+    return {
+      fecha: ev.date ? formatDate(ev.date) : (ev.name || 's/n'),
+      recaudacion: Math.round(fin.totalRev),
+      costos: Math.round(fin.netCost),
+      balance: Math.round(fin.balance),
+      acumulado: Math.round(acum),
+      margen: +fin.margin.toFixed(1),
+      asistencia: fin.att,
+      enSala: fin.totalPeople,
+      ticketProm: fin.att ? Math.round(fin.totalRev / fin.att) : 0,
+      tickets: Math.round(fin.tickRev),
+      guardarropa: Math.round(fin.wRev),
+      venue: Math.round(fin.venueCost),
+      djs: Math.round(fin.totalDjFee),
+      grabacion, otros,
+    }
+  })
+
+  const sum = (k) => series.reduce((a, r) => a + (r[k] || 0), 0)
+  const ingresosMix = [
+    { name: 'Tickets', value: sum('tickets') },
+    { name: 'Guardarropa', value: sum('guardarropa') },
+  ].filter(d => d.value > 0)
+  const costosMix = [
+    { name: 'Venue', value: sum('venue') },
+    { name: 'DJs', value: sum('djs') },
+    { name: 'Grabación', value: sum('grabacion') },
+    { name: 'Otros', value: sum('otros') },
+  ].filter(d => d.value > 0)
+
+  const tierAgg = {}
+  evs.forEach(({ ev, fin }) => (ev.tiers || []).forEach((t, i) => {
+    const key = (t.name || 'TANDA').toUpperCase()
+    tierAgg[key] = (tierAgg[key] || 0) + ((fin.sold && fin.sold[i]) || 0)
+  }))
+  const tierData = Object.entries(tierAgg).map(([name, value]) => ({ name, value })).filter(d => d.value > 0)
+
+  const aporteByMember = {}
+  evs.forEach(({ ev }) => {
+    (ev.crew || []).forEach(c => { const a = Number(c.amount) || 0; if (a && c.name) aporteByMember[c.name] = (aporteByMember[c.name] || 0) + a })
+    ;(ev.aportes || []).forEach(a => { const v = Number(a.amount) || 0; if (v && a.crew) aporteByMember[a.crew] = (aporteByMember[a.crew] || 0) + v })
+  })
+  const aporteData = Object.entries(aporteByMember).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value)
+
+  const pieLabel = ({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`
+
+  return (
+    <>
+      <div className="section-title" style={{ marginBottom:16 }}>analítica · finanzas del proyecto</div>
+      <div className="chart-grid">
+
+        <ChartCard wide title="recaudación · costos · balance" sub="barras = recaudación y costo neto · línea = balance, por fecha">
+          <ComposedChart data={series} margin={{ top:6, right:10, left:0, bottom:0 }}>
+            <CartesianGrid stroke={GRID} vertical={false} />
+            <XAxis dataKey="fecha" {...AXIS} />
+            <YAxis tickFormatter={kfmt} {...AXIS} />
+            <Tooltip formatter={tipMoney} />
+            <Legend />
+            <Bar isAnimationActive={false} dataKey="recaudacion" name="Recaudación" fill={A_COLORS.rev} radius={[4,4,0,0]} maxBarSize={42} />
+            <Bar isAnimationActive={false} dataKey="costos" name="Costo neto" fill={A_COLORS.cost} radius={[4,4,0,0]} maxBarSize={42} />
+            <Line isAnimationActive={false} type="monotone" dataKey="balance" name="Balance" stroke={A_COLORS.bal} strokeWidth={2.5} dot={{ r:3 }} />
+          </ComposedChart>
+        </ChartCard>
+
+        <ChartCard wide title="balance acumulado" sub="ganancia/pérdida sumada evento tras evento">
+          <AreaChart data={series} margin={{ top:6, right:10, left:0, bottom:0 }}>
+            <defs>
+              <linearGradient id="gAcum" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={A_COLORS.bal} stopOpacity={0.5} />
+                <stop offset="100%" stopColor={A_COLORS.bal} stopOpacity={0.02} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid stroke={GRID} vertical={false} />
+            <XAxis dataKey="fecha" {...AXIS} />
+            <YAxis tickFormatter={kfmt} {...AXIS} />
+            <Tooltip formatter={tipMoney} />
+            <Area isAnimationActive={false} type="monotone" dataKey="acumulado" name="Acumulado" stroke={A_COLORS.bal} strokeWidth={2.5} fill="url(#gAcum)" />
+          </AreaChart>
+        </ChartCard>
+
+        <ChartCard title="margen %" sub="rentabilidad sobre la recaudación">
+          <LineChart data={series} margin={{ top:6, right:10, left:0, bottom:0 }}>
+            <CartesianGrid stroke={GRID} vertical={false} />
+            <XAxis dataKey="fecha" {...AXIS} />
+            <YAxis tickFormatter={(v) => v + '%'} {...AXIS} />
+            <Tooltip formatter={tipPct} />
+            <Line isAnimationActive={false} type="monotone" dataKey="margen" name="Margen" stroke={A_COLORS.margin} strokeWidth={2.5} dot={{ r:3 }} />
+          </LineChart>
+        </ChartCard>
+
+        <ChartCard title="asistencia" sub="entradas vendidas vs total en sala">
+          <LineChart data={series} margin={{ top:6, right:10, left:0, bottom:0 }}>
+            <CartesianGrid stroke={GRID} vertical={false} />
+            <XAxis dataKey="fecha" {...AXIS} />
+            <YAxis {...AXIS} />
+            <Tooltip formatter={tipPeople} />
+            <Legend />
+            <Line isAnimationActive={false} type="monotone" dataKey="asistencia" name="Vendidas" stroke={A_COLORS.att} strokeWidth={2.5} dot={{ r:3 }} />
+            <Line isAnimationActive={false} type="monotone" dataKey="enSala" name="En sala" stroke={A_COLORS.sala} strokeWidth={2} strokeDasharray="4 3" dot={{ r:2 }} />
+          </LineChart>
+        </ChartCard>
+
+        <ChartCard title="ticket promedio" sub="recaudación / entradas vendidas">
+          <LineChart data={series} margin={{ top:6, right:10, left:0, bottom:0 }}>
+            <CartesianGrid stroke={GRID} vertical={false} />
+            <XAxis dataKey="fecha" {...AXIS} />
+            <YAxis tickFormatter={kfmt} {...AXIS} />
+            <Tooltip formatter={tipMoney} />
+            <Line isAnimationActive={false} type="monotone" dataKey="ticketProm" name="Ticket prom." stroke={A_COLORS.ticketProm} strokeWidth={2.5} dot={{ r:3 }} />
+          </LineChart>
+        </ChartCard>
+
+        <ChartCard wide title="composición de ingresos por evento" sub="tickets + guardarropa (bruto)">
+          <BarChart data={series} margin={{ top:6, right:10, left:0, bottom:0 }}>
+            <CartesianGrid stroke={GRID} vertical={false} />
+            <XAxis dataKey="fecha" {...AXIS} />
+            <YAxis tickFormatter={kfmt} {...AXIS} />
+            <Tooltip formatter={tipMoney} />
+            <Legend />
+            <Bar isAnimationActive={false} dataKey="tickets" name="Tickets" stackId="i" fill={A_COLORS.tickets} maxBarSize={48} />
+            <Bar isAnimationActive={false} dataKey="guardarropa" name="Guardarropa" stackId="i" fill={A_COLORS.guarda} radius={[4,4,0,0]} maxBarSize={48} />
+          </BarChart>
+        </ChartCard>
+
+        <ChartCard wide title="composición de costos por evento" sub="venue · djs · grabación · otros (antes de aportes)">
+          <BarChart data={series} margin={{ top:6, right:10, left:0, bottom:0 }}>
+            <CartesianGrid stroke={GRID} vertical={false} />
+            <XAxis dataKey="fecha" {...AXIS} />
+            <YAxis tickFormatter={kfmt} {...AXIS} />
+            <Tooltip formatter={tipMoney} />
+            <Legend />
+            <Bar isAnimationActive={false} dataKey="venue" name="Venue" stackId="c" fill={A_COLORS.venue} maxBarSize={48} />
+            <Bar isAnimationActive={false} dataKey="djs" name="DJs" stackId="c" fill={A_COLORS.djs} maxBarSize={48} />
+            <Bar isAnimationActive={false} dataKey="grabacion" name="Grabación" stackId="c" fill={A_COLORS.grab} maxBarSize={48} />
+            <Bar isAnimationActive={false} dataKey="otros" name="Otros" stackId="c" fill={A_COLORS.otros} radius={[4,4,0,0]} maxBarSize={48} />
+          </BarChart>
+        </ChartCard>
+
+        <ChartCard title="mix de ingresos (total)" sub="tickets vs guardarropa">
+          <PieChart>
+            <Tooltip formatter={tipMoney} />
+            <Pie isAnimationActive={false} data={ingresosMix} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={48} outerRadius={88} paddingAngle={2} label={pieLabel} labelLine={false}>
+              {ingresosMix.map((d, i) => <Cell key={i} fill={PIE_REV[i % PIE_REV.length]} />)}
+            </Pie>
+          </PieChart>
+        </ChartCard>
+
+        <ChartCard title="mix de costos (total)" sub="dónde se va la plata">
+          <PieChart>
+            <Tooltip formatter={tipMoney} />
+            <Pie isAnimationActive={false} data={costosMix} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={48} outerRadius={88} paddingAngle={2} label={pieLabel} labelLine={false}>
+              {costosMix.map((d, i) => <Cell key={i} fill={PIE_COST[i % PIE_COST.length]} />)}
+            </Pie>
+          </PieChart>
+        </ChartCard>
+
+        <ChartCard title="entradas vendidas por tanda" sub="agregado de todos los eventos">
+          <BarChart data={tierData} margin={{ top:6, right:10, left:0, bottom:0 }}>
+            <CartesianGrid stroke={GRID} vertical={false} />
+            <XAxis dataKey="name" {...AXIS} />
+            <YAxis {...AXIS} />
+            <Tooltip formatter={(v) => v + ' entradas'} />
+            <Bar isAnimationActive={false} dataKey="value" name="Vendidas" radius={[4,4,0,0]} maxBarSize={60}>
+              {tierData.map((d, i) => <Cell key={i} fill={PIE_TIER[i % PIE_TIER.length]} />)}
+            </Bar>
+          </BarChart>
+        </ChartCard>
+
+        {aporteData.length > 0 && (
+          <ChartCard wide title="aportes del team por integrante" sub="cuánto puso cada uno (reduce los costos)" height={Math.max(180, aporteData.length * 38 + 40)}>
+            <BarChart data={aporteData} layout="vertical" margin={{ top:6, right:16, left:10, bottom:0 }}>
+              <CartesianGrid stroke={GRID} horizontal={false} />
+              <XAxis type="number" tickFormatter={kfmt} {...AXIS} />
+              <YAxis type="category" dataKey="name" width={90} {...AXIS} />
+              <Tooltip formatter={tipMoney} />
+              <Bar isAnimationActive={false} dataKey="value" name="Aportado" fill={A_COLORS.bal} radius={[0,4,4,0]} maxBarSize={26} />
+            </BarChart>
+          </ChartCard>
+        )}
+
+      </div>
+    </>
+  )
+}
+
 // ─── App ──────────────────────────────────────────────────────────────────────
 
 export default function App() {
@@ -514,7 +766,7 @@ export default function App() {
   const [showAdminModal, setShowAdminModal] = useState(false)
   const [adminPin, setAdminPin]         = useState('')
   const [adminError, setAdminError]     = useState(false)
-  const [currentView, setCurrentView]   = useState('event') // 'event' | 'dashboard'
+  const [currentView, setCurrentView]   = useState('event') // 'event' | 'dashboard' | 'analytics'
 
   // ── Sidebar ───────────────────────────────────────────────────────────────────
   const [sidebarOpen, setSidebarOpen] = useState(
@@ -939,7 +1191,7 @@ export default function App() {
           })}
         </div>
 
-        {/* Sidebar footer — dashboard nav */}
+        {/* Sidebar footer — dashboard + analytics nav */}
         <div className="sidebar-footer">
           <button
             className={`sidebar-dash-btn ${currentView === 'dashboard' ? 'active' : ''}`}
@@ -950,6 +1202,15 @@ export default function App() {
               <rect x="15" y="12" width="7" height="9" rx="1"/><rect x="2" y="16" width="7" height="5" rx="1"/>
             </svg>
             Dashboard
+          </button>
+          <button
+            className={`sidebar-dash-btn ${currentView === 'analytics' ? 'active' : ''}`}
+            onClick={() => setCurrentView(v => v === 'analytics' ? 'event' : 'analytics')}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+              <path d="M3 3v18h18"/><path d="M7 14l3-4 4 3 5-7"/>
+            </svg>
+            Analítica
           </button>
         </div>
       </aside>
@@ -1180,6 +1441,9 @@ export default function App() {
               </>
             )
           })()}
+
+          {/* ── ANALYTICS VIEW ── */}
+          {currentView === 'analytics' && <Analytics events={events} />}
 
           {/* Empty state (event view) */}
           {currentView === 'event' && !currentEventId && (
